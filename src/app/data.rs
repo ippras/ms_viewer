@@ -1,4 +1,9 @@
+use crate::{
+    r#const::*,
+    utils::hash::{HashedDataFrame, HashedMetaDataFrame},
+};
 use anyhow::Result;
+use metadata::{Metadata, polars::MetaDataFrame};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,16 +14,16 @@ use std::{
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Data {
-    pub(crate) data_frame: DataFrame,
+    pub(crate) frame: HashedMetaDataFrame,
 }
 
 impl Data {
     pub(crate) fn save(&self, path: impl AsRef<Path>, format: Format) -> Result<()> {
-        let data_frame = self.data_frame.select(["RetentionTime", "Masspectrum"])?;
+        let data_frame = self.frame.data.select([RETENTION_TIME, MASS_SPECTRUM])?;
         match format {
             Format::Bin => {
-                let contents = bincode::serialize(&data_frame)?;
-                write(path, contents)?;
+                // let contents = bincode::serialize(&data_frame)?;
+                // write(path, contents)?;
             }
             Format::Ron => {
                 let contents = ron::ser::to_string_pretty(&data_frame, Default::default())?;
@@ -31,24 +36,27 @@ impl Data {
 
 impl Display for Data {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        Display::fmt(&self.data_frame, f)
+        Display::fmt(&self.frame.data.data_frame, f)
     }
 }
 
 impl Default for Data {
     fn default() -> Self {
         Self {
-            data_frame: DataFrame::empty_with_schema(&Schema::from_iter([
-                Field::new("RetentionTime".into(), DataType::String),
-                Field::new(
-                    "Masspectrum".into(),
-                    DataType::List(Box::new(DataType::Struct(vec![
-                        Field::new("MassToCharge".into(), DataType::String),
-                        Field::new("Signal".into(), DataType::String),
-                    ]))),
-                ),
-            ])),
+            frame: MetaDataFrame::new(Metadata::default(), HashedDataFrame::EMPTY),
         }
+        // Self {
+        //     frame: DataFrame::empty_with_schema(&Schema::from_iter([
+        //         Field::new(PlSmallStr::from_static(RETENTION_TIME), DataType::String),
+        //         Field::new(
+        //             PlSmallStr::from_static(MASS_SPECTRUM),
+        //             DataType::List(Box::new(DataType::Struct(vec![
+        //                 Field::new(PlSmallStr::from_static(MASS_TO_CHARGE), DataType::String),
+        //                 Field::new(PlSmallStr::from_static(SIGNAL), DataType::String),
+        //             ]))),
+        //         ),
+        //     ])),
+        // }
     }
 }
 

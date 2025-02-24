@@ -1,12 +1,9 @@
-use std::mem::take;
-
+use super::{Pane, plot::PlotPane, table::TablePane};
 use crate::{
     app::{icon, localize},
     utils::ContainerExt,
 };
-
-use super::{plot::PlotPane, table::TablePane, Pane};
-use egui::{menu::bar, CollapsingHeader, CursorIcon, RichText, Ui, WidgetText};
+use egui::{CollapsingHeader, CursorIcon, RichText, Ui, WidgetText};
 use egui_phosphor::regular::{CHART_BAR, LINK, TABLE, X};
 use egui_tiles::{Tile, TileId, Tiles, Tree, UiResponse};
 use serde::{Deserialize, Serialize};
@@ -50,20 +47,18 @@ impl Behavior {
                             .clicked()
                         {
                             *pane = match pane {
-                                Pane::Plot(PlotPane {
-                                    data_frame,
-                                    settings,
-                                }) => Pane::Table(TablePane {
-                                    data_frame: data_frame.clone(),
-                                    settings: *settings,
-                                }),
-                                Pane::Table(TablePane {
-                                    data_frame,
-                                    settings,
-                                }) => Pane::Plot(PlotPane {
-                                    data_frame: data_frame.clone(),
-                                    settings: *settings,
-                                }),
+                                Pane::Plot(PlotPane { frame, settings }) => {
+                                    Pane::Table(TablePane {
+                                        frame: frame.clone(),
+                                        settings: *settings,
+                                    })
+                                }
+                                Pane::Table(TablePane { frame, settings }) => {
+                                    Pane::Plot(PlotPane {
+                                        frame: frame.clone(),
+                                        settings: *settings,
+                                    })
+                                }
                             };
                             // if let Some(id) = self.tree.iter {
                             //     // if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {

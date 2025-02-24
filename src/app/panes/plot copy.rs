@@ -11,21 +11,16 @@ use crate::{
 };
 use egui::{
     Align2, RichText, Ui, Vec2,
-    emath::{Float, OrderedFloat, round_to_decimals},
+    emath::{Float, round_to_decimals},
 };
 use egui_ext::color;
-use egui_plot::{
-    Bar, BarChart, HLine, Legend, Line, Plot, PlotMemory, PlotPoint, PlotPoints, Text,
-};
+use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotMemory, PlotPoint, PlotPoints, Text};
 use indexmap::IndexMap;
-use itertools::Itertools;
 use polars::{error::PolarsResult, frame::DataFrame};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Write as _,
     iter::{empty, zip},
-    rc::Rc,
 };
 use tracing::error;
 
@@ -62,7 +57,7 @@ impl PlotPane {
             // let plot_memory = PlotMemory::load(ui.ctx(), id);
             let mut plot = Plot::new("plot")
                 .y_axis_formatter(move |y, _| round_to_decimals(y.value, 5).to_string());
-            if self.settings.plot.legend {
+            if self.settings.legend {
                 let mut legend = Legend::default();
                 // if let Some(visible) = self.settings.visible.take() {
                 //     legend = if visible {
@@ -234,50 +229,18 @@ impl PlotPane {
                 .cache::<TableComputed>()
                 .get(TableKey::new(&self.frame.data, &self.settings))
         });
-        let value = ui.memory_mut(|memory| {
+        let plot_frame = ui.memory_mut(|memory| {
             memory
                 .caches
                 .cache::<PlotComputed>()
                 .get(PlotKey::new(&frame, &self.settings))
         });
-        let mut plot = Plot::new("Plot").label_formatter(|name, value| {
-            if !name.is_empty() {
-                format!("{}\nx: {}\ny: {}", name, value.x, value.y)
-            } else {
-                format!("x: {}\ny: {}", value.x, value.y)
-                // "".to_owned()
-            }
-        });
-        // .label_formatter(move |name, PlotPoint { x, y }| {
-        //             let mut label = String::new();
-        //             if !name.is_empty() {
-        //                 _ = writeln!(&mut label, "{name}");
-        //             }
-        //             if let Some(values) = points.get(&IndexKey(PlotPoint::new(*x, *y))) {
-        //                 _ = writeln!(
-        //                     &mut label,
-        //                     "{onset_temperature} = {}",
-        //                     values
-        //                         .iter()
-        //                         .map(|value| value.onset_temperature)
-        //                         .format(","),
-        //                 );
-        //                 _ = writeln!(
-        //                     &mut label,
-        //                     "{temperature_step} = {}",
-        //                     values
-        //                         .iter()
-        //                         .map(|value| value.temperature_step)
-        //                         .format(","),
-        //                 );
-        //             }
-        //             let precision = self.settings.precision;
-        //             _ = writeln!(&mut label, "{retention_time} = {x:.precision$}");
-        //             _ = write!(&mut label, "{equivalent_chain_length} = {y:.precision$}");
-        //             label
-        //         });
-        // .y_axis_formatter(move |y, _| round_to_decimals(y.value, 5).to_string());
-        if self.settings.plot.legend {
+        let total_rows = frame.height();
+        let retention_time = frame[RETENTION_TIME].f64().unwrap();
+        let mass_spectrum = frame[MASS_SPECTRUM].list().unwrap();
+        let mut plot = Plot::new("plot")
+            .y_axis_formatter(move |y, _| round_to_decimals(y.value, 5).to_string());
+        if self.settings.legend {
             let mut legend = Legend::default();
             // if let Some(visible) = self.settings.visible.take() {
             //     legend = if visible {
@@ -296,53 +259,47 @@ impl PlotPane {
             // let width = ui.plot_bounds().width();
             // tracing::error!(?width);
 
-            // Bar chart
-            let mass_spectrums = Rc::new(value.mass_spectrums);
-            for (mass_to_charge, bars) in value.bars {
-                let mass_spectrums = mass_spectrums.clone();
+            // Bars
+            let mut bars = IndexMap::<_, Vec<_>>::new();
+            // for row_index in 0..total_rows {
+            //     let retention_time = retention_time.get(row_index).unwrap();
+            //     let mass_spectrum = mass_spectrum.get_as_series(row_index).unwrap();
+            //     let mass_spectrum = mass_spectrum.struct_().unwrap();
+            //     let mass_to_charge = mass_spectrum.field_by_name(MASS_TO_CHARGE).unwrap();
+            //     let mass_to_charge = mass_to_charge.f32().unwrap();
+            //     let signal = mass_spectrum.field_by_name(SIGNAL).unwrap();
+            //     let signal = signal.u16().unwrap();
+            //     for (mass_to_charge, signal) in zip(mass_to_charge, signal) {
+            //         let mass_to_charge = mass_to_charge.unwrap();
+            //         let signal = signal.unwrap();
+            //         let bar =
+            //             Bar::new(retention_time as _, signal as _).name(mass_to_charge.to_string());
+            //         bars.push(bar);
+            //     }
+            // }
+            for (retention_time, mass_spectrum) in zip(retention_time, mass_spectrum) {
+                let retention_time = retention_time.unwrap();
+                let mass_spectrum = mass_spectrum.unwrap();
+                let mass_spectrum = mass_spectrum.struct_().unwrap();
+                let mass_to_charge_series = mass_spectrum.field_by_name(MASS_TO_CHARGE).unwrap();
+                let mass_to_charge = mass_to_charge_series.f32().unwrap();
+                let signal_series = mass_spectrum.field_by_name(SIGNAL).unwrap();
+                let signal = signal_series.u16().unwrap();
+                for (mass_to_charge, signal) in zip(mass_to_charge, signal) {
+                    let mass_to_charge = mass_to_charge.unwrap();
+                    let signal = signal.unwrap();
+                    let bar = Bar::new(retention_time, signal as _)
+                        .name(mass_to_charge.to_string())
+                        .width(0.01);
+                    bars.entry(mass_to_charge.ord()).or_default().push(bar);
+                }
+            }
+            for (mass_to_charge, bars) in bars {
                 let index = mass_to_charge.0.round() as usize;
-                let bar_chart = BarChart::new("Bar chart", bars)
-                    .color(color(index))
-                    .element_formatter(Box::new(move |bar, _bar_chart| {
-                        let mut label = String::new();
-                        _ = writeln!(&mut label, "Retention time (x): {}", bar.argument);
-                        _ = writeln!(&mut label, "Signal (y): {}", bar.value);
-                        _ = writeln!(&mut label, "Mass to charge: {}", bar.name);
-                        let mass_spectrum = &mass_spectrums[&bar.argument.ord()];
-                        let Some((position, _)) =
-                            mass_spectrum
-                                .iter()
-                                .find_position(|mass_to_charge_and_signal| {
-                                    mass_to_charge_and_signal.0 == mass_to_charge.0
-                                })
-                        else {
-                            return label;
-                        };
-                        _ = writeln!(&mut label, "Mass spectrum:");
-                        let start = position.saturating_sub(10);
-                        let end = position.saturating_add(10).min(mass_spectrum.len());
-                        for (mass_to_charge, signal) in mass_spectrum[start..end].iter().rev() {
-                            _ = writeln!(
-                                &mut label,
-                                "\tMass to charge: {mass_to_charge}; Signal: {signal}"
-                            );
-                        }
-                        label
-                    }));
+                let bar_chart = BarChart::new(index.to_string(), bars).color(color(index));
                 ui.bar_chart(bar_chart);
             }
-            // Mean
-            if let Some(mean) = value.mean {
-                ui.hline(HLine::new("Mean", mean.0));
-            }
-            // Median
-            if let Some(median) = value.median {
-                ui.hline(HLine::new("Median", median.0));
-            }
-            // Rolling mean
-            if !value.rolling_mean.is_empty() {
-                ui.line(Line::new("Rolling mean", value.rolling_mean));
-            }
+            // ui.line(Line::new("Median", series));
         });
     }
 }

@@ -1,3 +1,2 @@
-pub(crate) use self::table::{Computed as TableComputed, Key as TableKey};
-
+pub(crate) mod plot;
 pub(crate) mod table;

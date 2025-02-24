@@ -1,0 +1,13 @@
+pub(crate) const COUNT: &str = "Count";
+pub(crate) const MASS_SPECTRUM: &str = "MassSpectrum";
+pub(crate) const MASS_TO_CHARGE: &str = "MassToCharge";
+pub(crate) const MAX: &str = "Max";
+pub(crate) const MEAN: &str = "Mean";
+pub(crate) const MEDIAN: &str = "Median";
+// pub(crate) const META: &str = "Meta";
+pub(crate) const MIN: &str = "Min";
+pub(crate) const RETENTION_TIME: &str = "RetentionTime";
+pub(crate) const ROLLING: &str = "Rolling";
+pub(crate) const SIGNAL: &str = "Signal";
+pub(crate) const STANDARD_DEVIATION: &str = "StandardDeviation";
+pub(crate) const SUM: &str = "Sum";

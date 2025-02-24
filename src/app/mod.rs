@@ -1,27 +1,30 @@
-use self::panes::{behavior::Behavior, Pane};
-use crate::utils::TreeExt;
+use self::panes::{Pane, behavior::Behavior};
+use crate::utils::{
+    TreeExt,
+    hash::{HashedDataFrame, HashedMetaDataFrame},
+};
 use anyhow::Result;
 use data::{Data, Format};
-use eframe::{get_value, set_value, APP_KEY};
+use eframe::{APP_KEY, CreationContext, Storage, get_value, set_value};
 use egui::{
-    menu::bar, warn_if_debug_build, Align, Align2, CentralPanel, Color32, DroppedFile,
-    FontDefinitions, Id, LayerId, Layout, Order, RichText, ScrollArea, SidePanel, TextStyle,
-    TopBottomPanel,
+    Align, Align2, CentralPanel, Color32, Context, DroppedFile, FontDefinitions, Frame, Id,
+    LayerId, Layout, Order, RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel, menu::bar,
+    warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
 use egui_phosphor::{
-    add_to_fonts,
+    Variant, add_to_fonts,
     regular::{
         ARROWS_CLOCKWISE, FLOPPY_DISK, GRID_FOUR, ROCKET, SIDEBAR_SIMPLE, SQUARE_SPLIT_HORIZONTAL,
         SQUARE_SPLIT_VERTICAL, TABLE, TABS, TRASH,
     },
-    Variant,
 };
 use egui_tiles::{ContainerKind, Tile, Tree};
+use metadata::polars::MetaDataFrame;
 use panes::table::TablePane;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Write, str, time::Duration};
+use std::{fmt::Write, io::Cursor, str, time::Duration};
 use tracing::{error, info, trace};
 
 macro icon($icon:expr) {
@@ -61,13 +64,14 @@ impl Default for App {
 
 impl App {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
         let mut fonts = FontDefinitions::default();
         add_to_fonts(&mut fonts, Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
 
+        // Default::default()
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         cc.storage
@@ -75,7 +79,7 @@ impl App {
             .unwrap_or_default()
     }
 
-    fn drag_and_drop(&mut self, ctx: &egui::Context) {
+    fn drag_and_drop(&mut self, ctx: &Context) {
         // Preview hovering files
         if let Some(text) = ctx.input(|input| {
             (!input.raw.hovered_files.is_empty()).then(|| {
@@ -104,35 +108,43 @@ impl App {
         }) {
             info!(?dropped_files);
             for dropped_file in dropped_files {
-                // let data_frame: DataFrame = match dropped.extension().and_then(OsStr::to_str) {
+                // let data_frame: DataFrame = match dropped_file.extension() {
                 //     Some("bin") => bincode::deserialize(&fs::read(&args.path)?)?,
                 //     Some("ron") => ron::de::from_str(&fs::read_to_string(&args.path)?)?,
                 //     _ => panic!("unsupported input file extension"),
                 // };
-                match bin(&dropped_file) {
-                    Ok(data_frame) => {
-                        trace!(?data_frame);
-                        self.tree.insert_pane(Pane::Table(TablePane {
-                            data_frame,
-                            settings: Default::default(),
-                        }));
-                    }
-                    Err(error) => {
-                        error!(%error);
-                        // self.toasts
-                        //     .error(format!("{}: {error}", dropped.display()))
-                        //     .set_closable(true)
-                        //     .set_duration(Some(NOTIFICATIONS_DURATION));
-                        continue;
-                    }
-                };
+                // dropped_file.extension();
+                let bytes = dropped_file.bytes().unwrap();
+                let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
+                let data = HashedDataFrame::new(frame.data).unwrap();
+                self.tree.insert_pane(Pane::Table(TablePane {
+                    frame: MetaDataFrame::new(frame.meta, data),
+                    settings: Default::default(),
+                }));
+                // match bin(&dropped_file) {
+                //     Ok(data_frame) => {
+                //         trace!(?data_frame);
+                //         self.tree.insert_pane(Pane::Table(TablePane {
+                //             data_frame,
+                //             settings: Default::default(),
+                //         }));
+                //     }
+                //     Err(error) => {
+                //         error!(%error);
+                //         // self.toasts
+                //         //     .error(format!("{}: {error}", dropped.display()))
+                //         //     .set_closable(true)
+                //         //     .set_duration(Some(NOTIFICATIONS_DURATION));
+                //         continue;
+                //     }
+                // };
             }
         }
     }
 }
 
 impl App {
-    fn panels(&mut self, ctx: &egui::Context) {
+    fn panels(&mut self, ctx: &Context) {
         self.top_panel(ctx);
         self.bottom_panel(ctx);
         self.left_panel(ctx);
@@ -140,7 +152,7 @@ impl App {
     }
 
     // Bottom panel
-    fn bottom_panel(&mut self, ctx: &egui::Context) {
+    fn bottom_panel(&mut self, ctx: &Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 warn_if_debug_build(ui);
@@ -151,7 +163,7 @@ impl App {
     }
 
     // Central panel
-    fn central_panel(&mut self, ctx: &egui::Context) {
+    fn central_panel(&mut self, ctx: &Context) {
         CentralPanel::default().show(ctx, |ui| {
             self.tree.ui(&mut self.behavior, ui);
             if let Some(id) = self.behavior.close.take() {
@@ -161,9 +173,9 @@ impl App {
     }
 
     // Left panel
-    fn left_panel(&mut self, ctx: &egui::Context) {
+    fn left_panel(&mut self, ctx: &Context) {
         SidePanel::left("left_panel")
-            .frame(egui::Frame::side_top_panel(&ctx.style()))
+            .frame(Frame::side_top_panel(&ctx.style()))
             .resizable(true)
             .show_animated(ctx, self.left_panel, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
@@ -174,7 +186,7 @@ impl App {
     }
 
     // Top panel
-    fn top_panel(&mut self, ctx: &egui::Context) {
+    fn top_panel(&mut self, ctx: &Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             bar(ui, |ui| {
                 // Left panel
@@ -258,7 +270,7 @@ impl App {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            data_frame: pane.data_frame().clone(),
+                                            frame: pane.frame().clone(),
                                         }
                                         .save("df.msv.ron", Format::Ron)
                                         .unwrap();
@@ -274,7 +286,7 @@ impl App {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            data_frame: pane.data_frame().clone(),
+                                            frame: pane.frame().clone(),
                                         }
                                         .save("df.msv.bin", Format::Ron)
                                         .unwrap();
@@ -355,12 +367,12 @@ impl App {
 
 impl eframe::App for App {
     /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, storage: &mut dyn Storage) {
         set_value(storage, APP_KEY, self);
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.panels(ctx);
         self.drag_and_drop(ctx);
         if self.reactive {
@@ -369,10 +381,12 @@ impl eframe::App for App {
     }
 }
 
-fn bin(dropped_file: &DroppedFile) -> Result<DataFrame> {
-    Ok(bincode::deserialize(&dropped_file.bytes()?)?)
-}
+// fn bin(dropped_file: &DroppedFile) -> Result<DataFrame> {
+//     Ok(bincode::deserialize(&dropped_file.bytes()?)?)
+// }
 
 mod computers;
 mod data;
 mod panes;
+mod states;
+mod widgets;
