@@ -150,7 +150,7 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
         };
         println!("lazy_frame gg: {}", lazy_frame.clone().collect().unwrap());
         let options = RollingOptionsFixedWindow {
-            window_size: 5,
+            window_size: 3,
             min_periods: 3,
             weights: None,
             center: false,
@@ -164,26 +164,17 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
             .with_columns([
                 (col("x") * col("y"))
                     .rolling_mean(options.clone())
-                    .alias("XYRollingMean"),
-                col("x").rolling_mean(options.clone()).alias("XRollingMean"),
-                col("y").rolling_mean(options.clone()).alias("YRollingMean"),
-                col("x")
-                    .rolling_std(options.clone())
-                    .alias("XRollingMeanStd"),
-                col("y")
-                    .rolling_std(options.clone())
-                    .alias("YRollingMeanStd"),
+                    .alias("xy_mean"),
+                col("x").rolling_mean(options.clone()).alias("x_mean"),
+                col("y").rolling_mean(options.clone()).alias("y_mean"),
+                col("x").rolling_std(options.clone()).alias("x_std"),
+                col("y").rolling_std(options.clone()).alias("y_std"),
             ])
-            .with_columns((pl.col("xy_mean") - pl.col("x_mean") * pl.col("y_mean")).alias("cov_xy"))
-            .with_columns(
-                (pl.col("cov_xy") / (pl.col("x_std") * pl.col("y_std"))).alias("correlation"),
-            )
-            .with_columns(
-                (pl.col("correlation") * (pl.col("y_std") / pl.col("x_std"))).alias("slope"),
-            )
-            .with_columns(
-                (pl.col("y_mean") - pl.col("slope") * pl.col("x_mean")).alias("intercept"),
-            );
+            .with_column((col("xy_mean") - col("x_mean") * col("y_mean")).alias("cov_xy"))
+            .with_column((col("cov_xy") / (col("x_std") * col("y_std"))).alias("Correlation"))
+            .with_column((col("Correlation") * (col("y_std") / col("x_std"))).alias("Slope"))
+            .with_column((col("y_mean") - col("Slope") * col("x_mean")).alias("Intercept"));
+        println!("lazy_frame gg1: {}", lazy_frame.clone().collect().unwrap());
         data_frame = lazy_frame.collect().unwrap();
         trace!(?data_frame);
         data_frame

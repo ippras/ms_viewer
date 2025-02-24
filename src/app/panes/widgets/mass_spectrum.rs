@@ -47,6 +47,21 @@ impl Widget for MassSpectrum<'_> {
                     if let Ok(value) = &self.data_frame["Signal.Sum"].get(self.row_index) {
                         ui.label(format!("Sum: {value}"));
                     }
+                })
+                .on_hover_ui(|ui| {
+                    ui.heading("???");
+                    if let Ok(value) = &self.data_frame["cov_xy"].get(self.row_index) {
+                        ui.label(format!("Cov x,y: {value}"));
+                    }
+                    if let Ok(value) = &self.data_frame["Correlation"].get(self.row_index) {
+                        ui.label(format!("Correlation: {value}"));
+                    }
+                    if let Ok(value) = &self.data_frame["Slope"].get(self.row_index) {
+                        ui.label(format!("Slope: {value}"));
+                    }
+                    if let Ok(value) = &self.data_frame["Intercept"].get(self.row_index) {
+                        ui.label(format!("Intercept: {value}"));
+                    }
                 });
             let mut space = ui.available_width();
             if ui.available_width() > height {
