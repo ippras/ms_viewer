@@ -1,10 +1,9 @@
 use super::{
     settings::{Settings, Sort, TimeUnits},
-    widgets::{eic::ExtractedIonChromatogram, mass_spectrum::MassSpectrum},
+    widgets::{ion_chromatogram::IonChromatogram, mass_spectrum::MassSpectrum},
 };
 use crate::app::computers::{TableComputed, TableKey};
 use egui::{Direction, Layout, Ui};
-use egui_ext::TableRowExt;
 use egui_extras::{Column, TableBuilder};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -46,7 +45,10 @@ impl TablePane {
         });
         let total_rows = data_frame.height();
         // let mass_to_charge = .cast(&DataType::UInt32)?;
-        let mass_to_charge = data_frame["MassToCharge"].f32()?;
+        let mass_to_charge = data_frame["MassToCharge"]
+            .as_materialized_series()
+            .round(2)?;
+        let mass_to_charge = mass_to_charge.f32()?;
         TableBuilder::new(ui)
             .cell_layout(Layout::centered_and_justified(Direction::LeftToRight))
             .column(Column::auto_with_initial_suggestion(width))
@@ -72,17 +74,17 @@ impl TablePane {
                         ui.label(row_index.to_string());
                     });
                     // Mass to charge
-                    row.left_align_col(|ui| {
+                    row.col(|ui| {
                         if let Some(value) = mass_to_charge.get(row_index) {
                             let formated = self.settings.mass_to_charge.format(value);
                             ui.label(formated).on_hover_text(formated.precision(None));
                         } else {
-                            ui.label("null");
+                            ui.label(AnyValue::Null.to_string());
                         }
                     });
                     // EIC
-                    row.left_align_col(|ui| {
-                        ui.add(ExtractedIonChromatogram {
+                    row.col(|ui| {
+                        ui.add(IonChromatogram {
                             data_frame: &data_frame,
                             row_index,
                             settings: &self.settings,
@@ -129,14 +131,14 @@ impl TablePane {
                         ui.label(row_index.to_string());
                     });
                     // Retention time
-                    row.left_align_col(|ui| {
+                    row.col(|ui| {
                         if let Some(value) = retention_time.get(row_index) {
                             let formated = self.settings.retention_time.format(value as _);
                             ui.label(formated).on_hover_text(formated.precision(None));
                         }
                     });
                     // Mass spectrum
-                    row.left_align_col(|ui| {
+                    row.col(|ui| {
                         ui.add(MassSpectrum {
                             data_frame: &data_frame,
                             row_index,
@@ -201,17 +203,19 @@ impl TablePane {
                     // RetentionTime & MassToCharge
                     let retention_time = |ui: &mut Ui| {
                         if let Some(value) = retention_time.get(row_index) {
-                            let time = Time::new::<millisecond>(value as _);
-                            let value = match self.settings.retention_time.units {
-                                TimeUnits::Millisecond => time.get::<millisecond>(),
-                                TimeUnits::Second => time.get::<second>(),
-                                TimeUnits::Minute => time.get::<minute>(),
-                            };
-                            ui.label(format!(
-                                "{value:.*}",
-                                self.settings.retention_time.precision,
-                            ))
-                            .on_hover_text(format!("{value}"));
+                            let formated = self.settings.retention_time.format(value as _);
+                            ui.label(formated).on_hover_text(formated.precision(None));
+                            // let time = Time::new::<millisecond>(value as _);
+                            // let value = match self.settings.retention_time.units {
+                            //     TimeUnits::Millisecond => time.get::<millisecond>(),
+                            //     TimeUnits::Second => time.get::<second>(),
+                            //     TimeUnits::Minute => time.get::<minute>(),
+                            // };
+                            // ui.label(format!(
+                            //     "{value:.*}",
+                            //     self.settings.retention_time.precision,
+                            // ))
+                            // .on_hover_text(format!("{value}"));
                         }
                     };
                     let mass_to_charge = |ui: &mut Ui| {
@@ -225,16 +229,16 @@ impl TablePane {
                     };
                     match self.settings.sort {
                         Sort::RetentionTime => {
-                            row.left_align_col(retention_time);
-                            row.left_align_col(mass_to_charge);
+                            row.col(retention_time);
+                            row.col(mass_to_charge);
                         }
                         Sort::MassToCharge => {
-                            row.left_align_col(mass_to_charge);
-                            row.left_align_col(retention_time);
+                            row.col(mass_to_charge);
+                            row.col(retention_time);
                         }
                     }
                     // Signal
-                    row.left_align_col(|ui| {
+                    row.col(|ui| {
                         if let Some(value) = signal.get(row_index) {
                             ui.label(format!("{value}"))
                                 .on_hover_text(format!("{value}"));
@@ -243,5 +247,16 @@ impl TablePane {
                 });
             });
         Ok(())
+    }
+}
+
+pub fn retention_time(units: TimeUnits) -> impl Fn(Option<f32>) -> Option<f32> + Copy {
+    move |value| {
+        let time = Time::new::<millisecond>(value?);
+        Some(match units {
+            TimeUnits::Millisecond => time.get::<millisecond>(),
+            TimeUnits::Second => time.get::<second>(),
+            TimeUnits::Minute => time.get::<minute>(),
+        })
     }
 }

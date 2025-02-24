@@ -1,12 +1,9 @@
-use std::mem::take;
-
+use super::{Pane, plot::PlotPane, table::TablePane};
 use crate::{
     app::{icon, localize},
     utils::ContainerExt,
 };
-
-use super::{plot::PlotPane, table::TablePane, Pane};
-use egui::{menu::bar, CollapsingHeader, CursorIcon, RichText, Ui, WidgetText};
+use egui::{CollapsingHeader, CursorIcon, RichText, Ui, WidgetText};
 use egui_phosphor::regular::{CHART_BAR, LINK, TABLE, X};
 use egui_tiles::{Tile, TileId, Tiles, Tree, UiResponse};
 use serde::{Deserialize, Serialize};

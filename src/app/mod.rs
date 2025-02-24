@@ -1,27 +1,26 @@
-use self::panes::{behavior::Behavior, Pane};
+use self::panes::{Pane, behavior::Behavior};
 use crate::utils::TreeExt;
 use anyhow::Result;
 use data::{Data, Format};
-use eframe::{get_value, set_value, APP_KEY};
+use eframe::{APP_KEY, get_value, set_value};
 use egui::{
-    menu::bar, warn_if_debug_build, Align, Align2, CentralPanel, Color32, DroppedFile,
-    FontDefinitions, Id, LayerId, Layout, Order, RichText, ScrollArea, SidePanel, TextStyle,
-    TopBottomPanel,
+    Align, Align2, CentralPanel, Color32, DroppedFile, FontDefinitions, Id, LayerId, Layout, Order,
+    RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel, menu::bar, warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
 use egui_phosphor::{
-    add_to_fonts,
+    Variant, add_to_fonts,
     regular::{
         ARROWS_CLOCKWISE, FLOPPY_DISK, GRID_FOUR, ROCKET, SIDEBAR_SIMPLE, SQUARE_SPLIT_HORIZONTAL,
         SQUARE_SPLIT_VERTICAL, TABLE, TABS, TRASH,
     },
-    Variant,
 };
 use egui_tiles::{ContainerKind, Tile, Tree};
+use metadata::MetaDataFrame;
 use panes::table::TablePane;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Write, str, time::Duration};
+use std::{fmt::Write, io::Cursor, str, time::Duration};
 use tracing::{error, info, trace};
 
 macro icon($icon:expr) {
@@ -104,28 +103,36 @@ impl App {
         }) {
             info!(?dropped_files);
             for dropped_file in dropped_files {
-                // let data_frame: DataFrame = match dropped.extension().and_then(OsStr::to_str) {
+                // let data_frame: DataFrame = match dropped_file.extension() {
                 //     Some("bin") => bincode::deserialize(&fs::read(&args.path)?)?,
                 //     Some("ron") => ron::de::from_str(&fs::read_to_string(&args.path)?)?,
                 //     _ => panic!("unsupported input file extension"),
                 // };
-                match bin(&dropped_file) {
-                    Ok(data_frame) => {
-                        trace!(?data_frame);
-                        self.tree.insert_pane(Pane::Table(TablePane {
-                            data_frame,
-                            settings: Default::default(),
-                        }));
-                    }
-                    Err(error) => {
-                        error!(%error);
-                        // self.toasts
-                        //     .error(format!("{}: {error}", dropped.display()))
-                        //     .set_closable(true)
-                        //     .set_duration(Some(NOTIFICATIONS_DURATION));
-                        continue;
-                    }
-                };
+                // dropped_file.extension();
+                let bytes = dropped_file.bytes().unwrap();
+                let reader = Cursor::new(bytes);
+                let frame = MetaDataFrame::read(reader).unwrap();
+                self.tree.insert_pane(Pane::Table(TablePane {
+                    data_frame: frame.data,
+                    settings: Default::default(),
+                }));
+                // match bin(&dropped_file) {
+                //     Ok(data_frame) => {
+                //         trace!(?data_frame);
+                //         self.tree.insert_pane(Pane::Table(TablePane {
+                //             data_frame,
+                //             settings: Default::default(),
+                //         }));
+                //     }
+                //     Err(error) => {
+                //         error!(%error);
+                //         // self.toasts
+                //         //     .error(format!("{}: {error}", dropped.display()))
+                //         //     .set_closable(true)
+                //         //     .set_duration(Some(NOTIFICATIONS_DURATION));
+                //         continue;
+                //     }
+                // };
             }
         }
     }

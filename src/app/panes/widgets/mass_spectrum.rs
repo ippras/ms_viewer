@@ -3,6 +3,9 @@ use egui::{Direction, Layout, Response, RichText, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular::LIST;
 use polars::prelude::*;
+use polars_utils::format_list_truncated;
+
+use super::signal::SignalWidget;
 
 /// Mass spectrum widget
 pub struct MassSpectrum<'a> {
@@ -18,7 +21,7 @@ impl Widget for MassSpectrum<'_> {
         let mass_spectrum = self.data_frame["MassSpectrum"].list().unwrap();
         let mass_spectrum_series = mass_spectrum.get_as_series(self.row_index).unwrap();
         ui.horizontal(|ui| {
-            ui.label(mass_spectrum_series.fmt_list())
+            ui.label(format_list_truncated!(mass_spectrum_series.iter(), 2))
                 .on_hover_ui(|ui| {
                     if let Ok(value) = &self.data_frame["MassSpectrum.Count"].get(self.row_index) {
                         ui.label(format!("Count: {value}"));
@@ -90,9 +93,22 @@ impl Widget for MassSpectrum<'_> {
                             });
                             // Signal
                             row.col(|ui| {
-                                let signal = signal_series.cast(&DataType::Float64).unwrap();
-                                let signal = signal.f64().unwrap();
-                                ui.label(signal.get(row_index).unwrap().to_string());
+                                // let signal = signal_series.cast(&DataType::Float64).unwrap();
+                                // let signal = signal.f64().unwrap();
+                                // ui.label(signal.get(row_index).unwrap().to_string());
+                                if self.settings.signal.normalize {
+                                    let signal = signal_series.f64().unwrap();
+                                    ui.add(
+                                        SignalWidget::new(signal.get(row_index))
+                                            .precision(Some(self.settings.signal.precision)),
+                                    );
+                                } else {
+                                    let signal = signal_series.u16().unwrap();
+                                    ui.add(
+                                        SignalWidget::new(signal.get(row_index))
+                                            .precision(Some(self.settings.signal.precision)),
+                                    );
+                                };
                             });
                         });
                     });

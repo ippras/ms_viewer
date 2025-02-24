@@ -1,10 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
-use egui::{ComboBox, DragValue, Ui, WidgetText};
+use egui::{ComboBox, DragValue, Grid, Response, Ui, Widget, WidgetText};
+use polars::prelude::AnyValue;
 use serde::{Deserialize, Serialize};
 use uom::si::{
     f32::Time,
-    time::{millisecond, minute, second, Units},
+    time::{Units, millisecond, minute, second},
 };
 
 use crate::app::MAX_PRECISION;
@@ -16,9 +17,9 @@ pub(crate) struct Settings {
     pub(crate) filter_null: bool,
     pub(crate) mass_to_charge: MassToCharge,
     pub(crate) retention_time: RetentionTime,
-    pub(crate) sort: Sort,
+    pub(crate) signal: Signal,
 
-    pub(crate) normalize: bool,
+    pub(crate) sort: Sort,
 
     pub(crate) legend: bool,
     pub(crate) visible: Option<bool>,
@@ -26,9 +27,10 @@ pub(crate) struct Settings {
 
 impl Settings {
     pub(crate) fn ui(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        Grid::new("id_salt").show(ui, |ui| {
+            // Retention time
             ui.label("Retention time");
-            ComboBox::from_id_source("retention_time_units")
+            ComboBox::from_id_salt("RetentionTimeUnits")
                 .selected_text(self.retention_time.units.singular())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
@@ -52,16 +54,25 @@ impl Settings {
                 })
                 .response
                 .on_hover_text(format!(
-                    "Units {}",
+                    "Retention time units {}",
                     self.retention_time.units.abbreviation(),
                 ));
             ui.add(DragValue::new(&mut self.retention_time.precision).range(0..=MAX_PRECISION))
-                .on_hover_text("Precision");
-        });
-        ui.horizontal(|ui| {
+                .on_hover_text("Retention time precision");
+            ui.end_row();
+
+            // Mass to charge
             ui.label("Mass to charge");
+            ui.label("");
             ui.add(DragValue::new(&mut self.mass_to_charge.precision).range(0..=MAX_PRECISION))
-                .on_hover_text("Precision");
+                .on_hover_text("Mass to charge precision");
+            ui.end_row();
+
+            // Signal
+            ui.label("Signal");
+            ui.checkbox(&mut self.signal.normalize, "Normalize");
+            ui.add(DragValue::new(&mut self.signal.precision).range(0..=MAX_PRECISION))
+                .on_hover_text("Signal precision");
         });
         ui.separator();
         ui.horizontal(|ui| {
@@ -77,7 +88,7 @@ impl Settings {
         ui.separator();
         ui.horizontal(|ui| {
             ui.label("Sort");
-            ComboBox::from_id_source("sort")
+            ComboBox::from_id_salt("sort")
                 .selected_text(self.sort.text())
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
@@ -95,12 +106,6 @@ impl Settings {
                 })
                 .response
                 .on_hover_text(self.sort.description());
-        });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Normalize");
-            ui.checkbox(&mut self.normalize, "")
-                .on_hover_text("Normalize");
         });
         ui.separator();
         ui.horizontal(|ui| {
@@ -138,7 +143,7 @@ impl Sort {
     }
 }
 
-/// Mass to charge settings
+/// Mass to charge
 #[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
 pub(crate) struct MassToCharge {
     pub(crate) precision: usize,
@@ -188,7 +193,7 @@ impl From<MassToChargeFormat> for WidgetText {
     }
 }
 
-/// Retention time settings
+/// Retention time
 #[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
 pub(crate) struct RetentionTime {
     pub(crate) precision: usize,
@@ -196,7 +201,7 @@ pub(crate) struct RetentionTime {
 }
 
 impl RetentionTime {
-    pub(crate) fn format(self, value: f32) -> RetentionTimeFormat {
+    pub(crate) fn format(self, value: i32) -> RetentionTimeFormat {
         RetentionTimeFormat {
             value,
             precision: Some(self.precision),
@@ -216,7 +221,7 @@ impl Default for RetentionTime {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct RetentionTimeFormat {
-    value: f32,
+    value: i32,
     precision: Option<usize>,
     units: TimeUnits,
 }
@@ -229,11 +234,11 @@ impl RetentionTimeFormat {
 
 impl Display for RetentionTimeFormat {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let time = Time::new::<millisecond>(self.value as _);
+        let milliseconds = || Time::new::<millisecond>(self.value as _);
         let value = match self.units {
-            TimeUnits::Millisecond => time.get::<millisecond>(),
-            TimeUnits::Second => time.get::<second>(),
-            TimeUnits::Minute => time.get::<minute>(),
+            TimeUnits::Millisecond => return write!(f, "{}", self.value),
+            TimeUnits::Second => milliseconds().get::<second>(),
+            TimeUnits::Minute => milliseconds().get::<minute>(),
         };
         if let Some(precision) = self.precision {
             write!(f, "{value:.precision$}")
@@ -278,6 +283,22 @@ impl From<TimeUnits> for Units {
             TimeUnits::Millisecond => Units::millisecond(millisecond),
             TimeUnits::Second => Units::second(second),
             TimeUnits::Minute => Units::minute(minute),
+        }
+    }
+}
+
+/// Signal
+#[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
+pub(crate) struct Signal {
+    pub(crate) normalize: bool,
+    pub(crate) precision: usize,
+}
+
+impl Default for Signal {
+    fn default() -> Self {
+        Self {
+            normalize: false,
+            precision: 2,
         }
     }
 }
