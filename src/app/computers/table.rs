@@ -1,4 +1,7 @@
-use crate::app::panes::settings::{Settings, Sort, TimeUnits};
+use crate::{
+    app::panes::settings::{Settings, Sort, TimeUnits},
+    r#const::*,
+};
 use egui::util::cache::{ComputerMut, FrameCache};
 use polars::{frame::DataFrame, prelude::*};
 use polars_ext::column;
@@ -25,18 +28,18 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
         //         .clone()
         //         .lazy()
         //         .select([
-        //             col("RetentionTime"),
-        //             col("Masspectrum").alias("MassSpectrum"),
+        //             col(RETENTION_TIME),
+        //             col("Masspectrum").alias(MASS_SPECTRUM),
         //         ])
         //         // .explode(["Masspectrum"])
         //         // .unnest(["Masspectrum"])
-        //         //     .sort(["MassToCharge"], Default::default())
-        //         //     .group_by([col("RetentionTime")])
+        //         //     .sort([MASS_TO_CHARGE], Default::default())
+        //         //     .group_by([col(RETENTION_TIME)])
         //         //     .agg([as_struct(vec![
-        //         //         col("MassToCharge").drop_nulls(),
-        //         //         col("Signal").drop_nulls(),
+        //         //         col(MASS_TO_CHARGE).drop_nulls(),
+        //         //         col(SIGNAL).drop_nulls(),
         //         //     ])
-        //         //     .alias("MassSpectrum")])
+        //         //     .alias(MASS_SPECTRUM)])
         //         .collect()
         //         .unwrap();
         //     let contents = bincode::serialize(&data_frame).unwrap();
@@ -47,64 +50,61 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
         // }
         let mut lazy_frame = data_frame.lazy();
         if key.settings.filter_null {
-            lazy_frame = lazy_frame.drop_nulls(Some(vec![col("MassToCharge"), col("Signal")]));
-            // lazy_frame = lazy_frame.filter(col("MassSpectrum").list().len().neq(lit(0)));
+            lazy_frame = lazy_frame.drop_nulls(Some(cols([MASS_TO_CHARGE, SIGNAL])));
+            // lazy_frame = lazy_frame.filter(col(MASS_SPECTRUM).list().len().neq(lit(0)));
         }
         if key.settings.signal.normalize {
-            lazy_frame =
-                lazy_frame.with_column(col("Signal").cast(DataType::Float64) / max("Signal"));
+            lazy_frame = lazy_frame.with_column(col(SIGNAL).cast(DataType::Float64) / max(SIGNAL));
         }
         match key.settings.sort {
             Sort::RetentionTime => {
                 lazy_frame = lazy_frame
-                    .sort(["MassToCharge"], Default::default())
-                    .group_by([col("RetentionTime")])
-                    .agg([
-                        as_struct(vec![col("MassToCharge"), col("Signal")]).alias("MassSpectrum")
-                    ]);
+                    .sort([MASS_TO_CHARGE], Default::default())
+                    .group_by([col(RETENTION_TIME)])
+                    .agg([as_struct(vec![col(MASS_TO_CHARGE), col(SIGNAL)]).alias(MASS_SPECTRUM)]);
                 if !key.settings.explode {
                     lazy_frame = lazy_frame.with_columns([
-                        col("MassSpectrum").list().len().name().suffix(".Count"),
-                        col("MassSpectrum")
+                        col(MASS_SPECTRUM).list().len().name().suffix(".Count"),
+                        col(MASS_SPECTRUM)
                             .list()
-                            .eval(col("").struct_().field_by_name("MassToCharge"), true)
+                            .eval(col("").struct_().field_by_name(MASS_TO_CHARGE))
                             .list()
                             .min()
                             .alias("MassToCharge.Min"),
-                        col("MassSpectrum")
+                        col(MASS_SPECTRUM)
                             .list()
-                            .eval(col("").struct_().field_by_name("MassToCharge"), true)
+                            .eval(col("").struct_().field_by_name(MASS_TO_CHARGE))
                             .list()
                             .max()
                             .alias("MassToCharge.Max"),
-                        col("MassSpectrum")
+                        col(MASS_SPECTRUM)
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .min()
                             .alias("Signal.Min"),
-                        col("MassSpectrum")
+                        col(MASS_SPECTRUM)
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .max()
                             .alias("Signal.Max"),
-                        col("MassSpectrum")
+                        col(MASS_SPECTRUM)
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .sum()
                             .alias("Signal.Sum"),
                     ]);
                 }
-                lazy_frame = lazy_frame.sort(["RetentionTime"], Default::default());
+                lazy_frame = lazy_frame.sort([RETENTION_TIME], Default::default());
             }
             Sort::MassToCharge => {
                 trace!(lazy_data_frame =? lazy_frame.clone().collect());
                 lazy_frame = lazy_frame
-                    .sort(["RetentionTime"], Default::default())
-                    .group_by([col("MassToCharge").round(2)])
-                    .agg([as_struct(vec![col("RetentionTime"), col("Signal")])
+                    .sort([RETENTION_TIME], Default::default())
+                    .group_by([col(MASS_TO_CHARGE).round(2, RoundMode::HalfToEven)])
+                    .agg([as_struct(vec![col(RETENTION_TIME), col(SIGNAL)])
                         .alias("ExtractedIonChromatogram")]);
                 if !key.settings.explode {
                     lazy_frame = lazy_frame.with_columns([
@@ -115,37 +115,37 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
                             .suffix(".Count"),
                         col("ExtractedIonChromatogram")
                             .list()
-                            .eval(col("").struct_().field_by_name("RetentionTime"), true)
+                            .eval(col("").struct_().field_by_name(RETENTION_TIME))
                             .list()
                             .min()
                             .alias("RetentionTime.Min"),
                         col("ExtractedIonChromatogram")
                             .list()
-                            .eval(col("").struct_().field_by_name("RetentionTime"), true)
+                            .eval(col("").struct_().field_by_name(RETENTION_TIME))
                             .list()
                             .max()
                             .alias("RetentionTime.Max"),
                         col("ExtractedIonChromatogram")
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .min()
                             .alias("Signal.Min"),
                         col("ExtractedIonChromatogram")
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .max()
                             .alias("Signal.Max"),
                         col("ExtractedIonChromatogram")
                             .list()
-                            .eval(col("").struct_().field_by_name("Signal"), true)
+                            .eval(col("").struct_().field_by_name(SIGNAL))
                             .list()
                             .sum()
                             .alias("Signal.Sum"),
                     ]);
                 }
-                lazy_frame = lazy_frame.sort(["MassToCharge"], Default::default());
+                lazy_frame = lazy_frame.sort([MASS_TO_CHARGE], Default::default());
             }
         };
         println!("lazy_frame gg: {}", lazy_frame.clone().collect().unwrap());
@@ -157,10 +157,7 @@ impl ComputerMut<Key<'_>, DataFrame> for Computer {
             fn_params: None,
         };
         lazy_frame = lazy_frame
-            .with_columns([
-                col("RetentionTime").alias("x"),
-                col("Signal.Sum").alias("y"),
-            ])
+            .with_columns([col(RETENTION_TIME).alias("x"), col("Signal.Sum").alias("y")])
             .with_columns([
                 (col("x") * col("y"))
                     .rolling_mean(options.clone())
@@ -231,9 +228,9 @@ impl Hash for Key<'_> {
 // }
 
 // fn retention_time(retention_time: RetentionTime) -> Expr {
-//     // col("").struct_().field_by_name("Signal")
+//     // col("").struct_().field_by_name(SIGNAL)
 // }
 
 // fn signal() -> Expr {
-//     col("").struct_().field_by_name("Signal")
+//     col("").struct_().field_by_name(SIGNAL)
 // }

@@ -1,6 +1,6 @@
 use super::settings::{Settings, Sort};
 use crate::app::computers::{TableComputed, TableKey};
-use egui::{emath::round_to_decimals, Align2, RichText, Ui, Vec2};
+use egui::{Align2, RichText, Ui, Vec2, emath::round_to_decimals};
 use egui_ext::color;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotMemory, PlotPoint, PlotPoints, Text};
 use polars::{error::PolarsResult, frame::DataFrame};
@@ -67,12 +67,16 @@ impl PlotPane {
                         },
                     )
                 {
-                    let line = Line::new(PlotPoints::from_iter(
-                        zip(retention_time.i32().unwrap(), signal.u16().unwrap()).filter_map(
-                            |(retention_time, signal)| Some([retention_time? as _, signal? as _]),
+                    let line = Line::new(
+                        mass_to_charge.to_string(),
+                        PlotPoints::from_iter(
+                            zip(retention_time.i32().unwrap(), signal.u16().unwrap()).filter_map(
+                                |(retention_time, signal)| {
+                                    Some([retention_time? as _, signal? as _])
+                                },
+                            ),
                         ),
-                    ))
-                    .name(mass_to_charge.to_string());
+                    );
                     ui.line(line);
                 }
 
@@ -272,7 +276,7 @@ impl PlotPane {
                 }
                 // }
             }
-            let chart = BarChart::new(bars);
+            let chart = BarChart::new("name", bars);
             ui.bar_chart(chart);
         });
     }

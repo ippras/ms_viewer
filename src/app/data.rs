@@ -1,3 +1,4 @@
+use crate::r#const::*;
 use anyhow::Result;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -14,11 +15,11 @@ pub(crate) struct Data {
 
 impl Data {
     pub(crate) fn save(&self, path: impl AsRef<Path>, format: Format) -> Result<()> {
-        let data_frame = self.data_frame.select(["RetentionTime", "Masspectrum"])?;
+        let data_frame = self.data_frame.select([RETENTION_TIME, MASS_SPECTRUM])?;
         match format {
             Format::Bin => {
-                let contents = bincode::serialize(&data_frame)?;
-                write(path, contents)?;
+                // let contents = bincode::serialize(&data_frame)?;
+                // write(path, contents)?;
             }
             Format::Ron => {
                 let contents = ron::ser::to_string_pretty(&data_frame, Default::default())?;
@@ -39,12 +40,12 @@ impl Default for Data {
     fn default() -> Self {
         Self {
             data_frame: DataFrame::empty_with_schema(&Schema::from_iter([
-                Field::new("RetentionTime".into(), DataType::String),
+                Field::new(PlSmallStr::from_static(RETENTION_TIME), DataType::String),
                 Field::new(
-                    "Masspectrum".into(),
+                    PlSmallStr::from_static(MASS_SPECTRUM),
                     DataType::List(Box::new(DataType::Struct(vec![
-                        Field::new("MassToCharge".into(), DataType::String),
-                        Field::new("Signal".into(), DataType::String),
+                        Field::new(PlSmallStr::from_static(MASS_TO_CHARGE), DataType::String),
+                        Field::new(PlSmallStr::from_static(SIGNAL), DataType::String),
                     ]))),
                 ),
             ])),

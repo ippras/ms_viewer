@@ -47,7 +47,7 @@ impl TablePane {
         // let mass_to_charge = .cast(&DataType::UInt32)?;
         let mass_to_charge = data_frame["MassToCharge"]
             .as_materialized_series()
-            .round(2)?;
+            .round(2, RoundMode::HalfToEven)?;
         let mass_to_charge = mass_to_charge.f32()?;
         TableBuilder::new(ui)
             .cell_layout(Layout::centered_and_justified(Direction::LeftToRight))

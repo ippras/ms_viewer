@@ -16,7 +16,7 @@ use egui_phosphor::{
     },
 };
 use egui_tiles::{ContainerKind, Tile, Tree};
-use metadata::MetaDataFrame;
+use metadata::polars::MetaDataFrame;
 use panes::table::TablePane;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
@@ -110,8 +110,7 @@ impl App {
                 // };
                 // dropped_file.extension();
                 let bytes = dropped_file.bytes().unwrap();
-                let reader = Cursor::new(bytes);
-                let frame = MetaDataFrame::read(reader).unwrap();
+                let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
                 self.tree.insert_pane(Pane::Table(TablePane {
                     data_frame: frame.data,
                     settings: Default::default(),
@@ -376,9 +375,9 @@ impl eframe::App for App {
     }
 }
 
-fn bin(dropped_file: &DroppedFile) -> Result<DataFrame> {
-    Ok(bincode::deserialize(&dropped_file.bytes()?)?)
-}
+// fn bin(dropped_file: &DroppedFile) -> Result<DataFrame> {
+//     Ok(bincode::deserialize(&dropped_file.bytes()?)?)
+// }
 
 mod computers;
 mod data;
