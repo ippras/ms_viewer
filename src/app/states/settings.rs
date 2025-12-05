@@ -18,6 +18,7 @@ pub(crate) struct Settings {
     pub(crate) mass_to_charge: MassToCharge,
     pub(crate) retention_time: RetentionTime,
     pub(crate) signal: Signal,
+    pub(crate) peak_max: bool,
 
     pub(crate) sort: Sort,
 
@@ -106,6 +107,10 @@ impl Settings {
                 })
                 .response
                 .on_hover_text(self.sort.description());
+        });
+        ui.horizontal(|ui| {
+            ui.label("PeakMax");
+            ui.checkbox(&mut self.peak_max, "");
         });
         ui.separator();
         ui.horizontal(|ui| {

@@ -1,7 +1,7 @@
-use super::settings::{Settings, Sort, TimeUnits};
 use crate::{
     app::{
-        computers::{TableComputed, TableKey},
+        computers::table::{Computed as TableComputed, Key as TableKey},
+        states::settings::{Settings, Sort, TimeUnits},
         widgets::{ion_chromatogram::IonChromatogram, mass_spectrum::MassSpectrum},
     },
     r#const::*,

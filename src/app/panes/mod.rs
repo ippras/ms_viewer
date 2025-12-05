@@ -1,11 +1,6 @@
-use self::{
-    behavior::Behavior,
-    plot::PlotPane,
-    settings::{Settings, Sort, TimeUnits},
-    table::TablePane,
-};
+use self::{behavior::Behavior, plot::PlotPane, table::TablePane};
 use crate::{
-    app::MAX_PRECISION,
+    app::states::settings::{Settings, Sort, TimeUnits},
     utils::hash::{HashedDataFrame, HashedMetaDataFrame},
 };
 use egui::{ComboBox, DragValue, Ui};

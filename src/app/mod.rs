@@ -5,10 +5,11 @@ use crate::utils::{
 };
 use anyhow::Result;
 use data::{Data, Format};
-use eframe::{APP_KEY, get_value, set_value};
+use eframe::{APP_KEY, CreationContext, Storage, get_value, set_value};
 use egui::{
-    Align, Align2, CentralPanel, Color32, DroppedFile, FontDefinitions, Id, LayerId, Layout, Order,
-    RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel, menu::bar, warn_if_debug_build,
+    Align, Align2, CentralPanel, Color32, Context, DroppedFile, FontDefinitions, Frame, Id,
+    LayerId, Layout, Order, RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel, menu::bar,
+    warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
 use egui_phosphor::{
@@ -63,7 +64,7 @@ impl Default for App {
 
 impl App {
     /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
         let mut fonts = FontDefinitions::default();
@@ -77,7 +78,7 @@ impl App {
             .unwrap_or_default()
     }
 
-    fn drag_and_drop(&mut self, ctx: &egui::Context) {
+    fn drag_and_drop(&mut self, ctx: &Context) {
         // Preview hovering files
         if let Some(text) = ctx.input(|input| {
             (!input.raw.hovered_files.is_empty()).then(|| {
@@ -142,7 +143,7 @@ impl App {
 }
 
 impl App {
-    fn panels(&mut self, ctx: &egui::Context) {
+    fn panels(&mut self, ctx: &Context) {
         self.top_panel(ctx);
         self.bottom_panel(ctx);
         self.left_panel(ctx);
@@ -150,7 +151,7 @@ impl App {
     }
 
     // Bottom panel
-    fn bottom_panel(&mut self, ctx: &egui::Context) {
+    fn bottom_panel(&mut self, ctx: &Context) {
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 warn_if_debug_build(ui);
@@ -161,7 +162,7 @@ impl App {
     }
 
     // Central panel
-    fn central_panel(&mut self, ctx: &egui::Context) {
+    fn central_panel(&mut self, ctx: &Context) {
         CentralPanel::default().show(ctx, |ui| {
             self.tree.ui(&mut self.behavior, ui);
             if let Some(id) = self.behavior.close.take() {
@@ -171,9 +172,9 @@ impl App {
     }
 
     // Left panel
-    fn left_panel(&mut self, ctx: &egui::Context) {
+    fn left_panel(&mut self, ctx: &Context) {
         SidePanel::left("left_panel")
-            .frame(egui::Frame::side_top_panel(&ctx.style()))
+            .frame(Frame::side_top_panel(&ctx.style()))
             .resizable(true)
             .show_animated(ctx, self.left_panel, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
@@ -184,7 +185,7 @@ impl App {
     }
 
     // Top panel
-    fn top_panel(&mut self, ctx: &egui::Context) {
+    fn top_panel(&mut self, ctx: &Context) {
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             bar(ui, |ui| {
                 // Left panel
@@ -365,12 +366,12 @@ impl App {
 
 impl eframe::App for App {
     /// Called by the frame work to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    fn save(&mut self, storage: &mut dyn Storage) {
         set_value(storage, APP_KEY, self);
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         self.panels(ctx);
         self.drag_and_drop(ctx);
         if self.reactive {

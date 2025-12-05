@@ -1,6 +1,8 @@
-use super::settings::{Settings, Sort};
 use crate::{
-    app::computers::{TableComputed, TableKey},
+    app::{
+        computers::table::{Computed as TableComputed, Key as TableKey},
+        states::settings::{Settings, Sort},
+    },
     r#const::*,
     utils::hash::{HashedDataFrame, HashedMetaDataFrame},
 };
@@ -16,11 +18,12 @@ use tracing::error;
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct PlotPane {
     pub(crate) frame: HashedMetaDataFrame,
+    // pub(crate) computed: HashedDataFrame,
     pub(crate) settings: Settings,
 }
 
 impl PlotPane {
-    pub(super) fn ui(&self, ui: &mut Ui) {
+    pub(super) fn ui(&mut self, ui: &mut Ui) {
         match self.settings.sort {
             Sort::RetentionTime if !self.settings.explode => self.grouped_by_retention_time(ui),
             Sort::MassToCharge if !self.settings.explode => self.grouped_by_mass_to_charge(ui),
@@ -210,16 +213,15 @@ impl PlotPane {
     }
 
     pub(super) fn grouped_by_retention_time(&self, ui: &mut Ui) {
-        let data_frame = ui.memory_mut(|memory| {
+        let frame = ui.memory_mut(|memory| {
             memory
                 .caches
                 .cache::<TableComputed>()
                 .get(TableKey::new(&self.frame.data, &self.settings))
         });
-        let total_rows = data_frame.height();
-        let retention_time = data_frame[RETENTION_TIME].f64().unwrap();
-        println!("self.frame.data: {}", self.frame.data.data_frame);
-        let mass_spectrum = self.frame.data[MASS_SPECTRUM].list().unwrap();
+        let total_rows = frame.height();
+        let retention_time = frame[RETENTION_TIME].f64().unwrap();
+        let mass_spectrum = frame[MASS_SPECTRUM].list().unwrap();
         let mut plot = Plot::new("plot")
             .y_axis_formatter(move |y, _| round_to_decimals(y.value, 5).to_string());
         if self.settings.legend {
@@ -274,14 +276,16 @@ impl PlotPane {
                 for (mass_to_charge, signal) in zip(mass_to_charge, signal) {
                     let mass_to_charge = mass_to_charge.unwrap();
                     let signal = signal.unwrap();
-                    let bar =
-                        Bar::new(retention_time, signal as _).name(mass_to_charge.to_string());
+                    let bar = Bar::new(retention_time, signal as _)
+                        .name(mass_to_charge.to_string())
+                        .width(0.02);
                     bars.push(bar);
                 }
                 // }
             }
             let chart = BarChart::new("name", bars);
             ui.bar_chart(chart);
+            // ui.line(Line::new("Median", series));
         });
     }
 }

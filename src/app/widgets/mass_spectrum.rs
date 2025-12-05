@@ -1,4 +1,4 @@
-use crate::app::panes::settings::Settings;
+use crate::app::states::settings::Settings;
 use egui::{Direction, Layout, Response, RichText, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular::LIST;

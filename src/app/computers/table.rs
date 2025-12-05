@@ -1,5 +1,5 @@
 use crate::{
-    app::panes::settings::{Settings, Sort, TimeUnits},
+    app::states::settings::{Settings, Sort, TimeUnits},
     r#const::*,
     utils::hash::HashedDataFrame,
 };
@@ -78,6 +78,7 @@ pub struct Key<'a> {
     pub(crate) explode: bool,
     pub(crate) filter_null: bool,
     pub(crate) normalize_signal: bool,
+    pub(crate) peak_max: bool,
     pub(crate) sort: Sort,
 }
 
@@ -88,6 +89,7 @@ impl<'a> Key<'a> {
             explode: settings.explode,
             filter_null: settings.filter_null,
             normalize_signal: settings.signal.normalize,
+            peak_max: settings.peak_max,
             sort: settings.sort,
         }
     }
@@ -189,9 +191,16 @@ fn retention_time(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
                     .sum()
                     .alias("Signal.Sum"),
             ])
-            .sort([RETENTION_TIME], Default::default())
-            .with_column(col("Signal.Sum").peak_max().alias("PeakMax"))
-            .filter(col("PeakMax"));
+            .sort([RETENTION_TIME], Default::default());
+        if key.peak_max {
+            lazy_frame = lazy_frame
+                .with_columns([
+                    col("Signal.Sum").peak_max().alias("PeakMax"),
+                    //
+                    col("Signal.Sum").median().alias("Signal.Median"),
+                ])
+                .filter(col("PeakMax"));
+        }
     }
     lazy_frame = lazy_frame.sort([RETENTION_TIME], Default::default());
     lazy_frame
