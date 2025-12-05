@@ -20,15 +20,23 @@ egui_plot = "0.34.0"
 egui_tiles = "0.14.0"
 itertools = "0.14.0"
 polars = { version = "0.52.0", features = [
+    "bitwise",
+    "dtype-duration",
     "dtype-i16",
     "dtype-struct",
     "dtype-u16",
     "fmt_no_tty",
     "lazy",
     "list_eval",
+    "peaks",
     "rolling_window",
     "round_series",
+    "row_hash",
     "serde",
+    #
+    "dtype-datetime",
+    # "dtype-decimal",
+    "timezones",
 ], default-features = false }
 polars-utils = { version = "0.52.0", features = ["nightly"] }
 ron = "0.12.0"

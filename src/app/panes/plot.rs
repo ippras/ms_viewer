@@ -1,5 +1,9 @@
 use super::settings::{Settings, Sort};
-use crate::app::computers::{TableComputed, TableKey};
+use crate::{
+    app::computers::{TableComputed, TableKey},
+    r#const::*,
+    utils::hash::{HashedDataFrame, HashedMetaDataFrame},
+};
 use egui::{Align2, RichText, Ui, Vec2, emath::round_to_decimals};
 use egui_ext::color;
 use egui_plot::{Bar, BarChart, Legend, Line, Plot, PlotMemory, PlotPoint, PlotPoints, Text};
@@ -11,7 +15,7 @@ use tracing::error;
 /// Plot pane
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct PlotPane {
-    pub(crate) data_frame: DataFrame,
+    pub(crate) frame: HashedMetaDataFrame,
     pub(crate) settings: Settings,
 }
 
@@ -26,15 +30,15 @@ impl PlotPane {
 
     pub(super) fn grouped_by_mass_to_charge(&self, ui: &mut Ui) {
         let data_frame = ui.memory_mut(|memory| {
-            memory.caches.cache::<TableComputed>().get(TableKey {
-                data_frame: &self.data_frame,
-                settings: &self.settings,
-            })
+            memory
+                .caches
+                .cache::<TableComputed>()
+                .get(TableKey::new(&self.frame.data, &self.settings))
         });
         // let points = data_frame.height();
-        let mass_to_charge = data_frame["MassToCharge"].f32().unwrap();
-        let retention_time = data_frame["RetentionTime"].list().unwrap();
-        let signal = data_frame["Signal"].list().unwrap();
+        let mass_to_charge = data_frame[MASS_TO_CHARGE].f32().unwrap();
+        let retention_time = data_frame[RETENTION_TIME].list().unwrap();
+        let signal = data_frame[SIGNAL].list().unwrap();
         ui.vertical_centered_justified(|ui| {
             // let id = ui.make_persistent_id("plot");
             // let plot_memory = PlotMemory::load(ui.ctx(), id);
@@ -207,14 +211,15 @@ impl PlotPane {
 
     pub(super) fn grouped_by_retention_time(&self, ui: &mut Ui) {
         let data_frame = ui.memory_mut(|memory| {
-            memory.caches.cache::<TableComputed>().get(TableKey {
-                data_frame: &self.data_frame,
-                settings: &self.settings,
-            })
+            memory
+                .caches
+                .cache::<TableComputed>()
+                .get(TableKey::new(&self.frame.data, &self.settings))
         });
         let total_rows = data_frame.height();
-        let retention_time = data_frame["RetentionTime"].i32().unwrap();
-        let mass_spectrum = self.data_frame["MassSpectrum"].list().unwrap();
+        let retention_time = data_frame[RETENTION_TIME].f64().unwrap();
+        println!("self.frame.data: {}", self.frame.data.data_frame);
+        let mass_spectrum = self.frame.data[MASS_SPECTRUM].list().unwrap();
         let mut plot = Plot::new("plot")
             .y_axis_formatter(move |y, _| round_to_decimals(y.value, 5).to_string());
         if self.settings.legend {
@@ -242,9 +247,9 @@ impl PlotPane {
             //     let retention_time = retention_time.get(row_index).unwrap();
             //     let mass_spectrum = mass_spectrum.get_as_series(row_index).unwrap();
             //     let mass_spectrum = mass_spectrum.struct_().unwrap();
-            //     let mass_to_charge = mass_spectrum.field_by_name("MassToCharge").unwrap();
+            //     let mass_to_charge = mass_spectrum.field_by_name(MASS_TO_CHARGE).unwrap();
             //     let mass_to_charge = mass_to_charge.f32().unwrap();
-            //     let signal = mass_spectrum.field_by_name("Signal").unwrap();
+            //     let signal = mass_spectrum.field_by_name(SIGNAL).unwrap();
             //     let signal = signal.u16().unwrap();
             //     for (mass_to_charge, signal) in zip(mass_to_charge, signal) {
             //         let mass_to_charge = mass_to_charge.unwrap();
@@ -258,12 +263,11 @@ impl PlotPane {
                 let retention_time = retention_time.unwrap();
                 let mass_spectrum = mass_spectrum.unwrap();
                 let mass_spectrum = mass_spectrum.struct_().unwrap();
-                let mass_to_charge = mass_spectrum.field_by_name("MassToCharge").unwrap();
+                let mass_to_charge = mass_spectrum.field_by_name(MASS_TO_CHARGE).unwrap();
                 let mass_to_charge = mass_to_charge.f32().unwrap();
-                let signal = mass_spectrum.field_by_name("Signal").unwrap();
+                let signal = mass_spectrum.field_by_name(SIGNAL).unwrap();
                 let signal = signal.u16().unwrap();
                 // error!(retention_time, ?range_x);
-                let retention_time = retention_time as _;
                 // if range_x.start().floor() <= retention_time
                 //     && retention_time <= range_x.end().ceil()
                 // {

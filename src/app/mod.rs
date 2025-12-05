@@ -1,5 +1,8 @@
 use self::panes::{Pane, behavior::Behavior};
-use crate::utils::TreeExt;
+use crate::utils::{
+    TreeExt,
+    hash::{HashedDataFrame, HashedMetaDataFrame},
+};
 use anyhow::Result;
 use data::{Data, Format};
 use eframe::{APP_KEY, get_value, set_value};
@@ -111,8 +114,9 @@ impl App {
                 // dropped_file.extension();
                 let bytes = dropped_file.bytes().unwrap();
                 let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
+                let data = HashedDataFrame::new(frame.data).unwrap();
                 self.tree.insert_pane(Pane::Table(TablePane {
-                    data_frame: frame.data,
+                    frame: MetaDataFrame::new(frame.meta, data),
                     settings: Default::default(),
                 }));
                 // match bin(&dropped_file) {
@@ -264,7 +268,7 @@ impl App {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            data_frame: pane.data_frame().clone(),
+                                            frame: pane.frame().clone(),
                                         }
                                         .save("df.msv.ron", Format::Ron)
                                         .unwrap();
@@ -280,7 +284,7 @@ impl App {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            data_frame: pane.data_frame().clone(),
+                                            frame: pane.frame().clone(),
                                         }
                                         .save("df.msv.bin", Format::Ron)
                                         .unwrap();
@@ -382,3 +386,5 @@ impl eframe::App for App {
 mod computers;
 mod data;
 mod panes;
+mod states;
+mod widgets;

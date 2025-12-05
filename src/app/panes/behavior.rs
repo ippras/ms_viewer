@@ -47,20 +47,18 @@ impl Behavior {
                             .clicked()
                         {
                             *pane = match pane {
-                                Pane::Plot(PlotPane {
-                                    data_frame,
-                                    settings,
-                                }) => Pane::Table(TablePane {
-                                    data_frame: data_frame.clone(),
-                                    settings: *settings,
-                                }),
-                                Pane::Table(TablePane {
-                                    data_frame,
-                                    settings,
-                                }) => Pane::Plot(PlotPane {
-                                    data_frame: data_frame.clone(),
-                                    settings: *settings,
-                                }),
+                                Pane::Plot(PlotPane { frame, settings }) => {
+                                    Pane::Table(TablePane {
+                                        frame: frame.clone(),
+                                        settings: *settings,
+                                    })
+                                }
+                                Pane::Table(TablePane { frame, settings }) => {
+                                    Pane::Plot(PlotPane {
+                                        frame: frame.clone(),
+                                        settings: *settings,
+                                    })
+                                }
                             };
                             // if let Some(id) = self.tree.iter {
                             //     // if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {

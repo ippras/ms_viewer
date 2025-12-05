@@ -4,7 +4,10 @@ use self::{
     settings::{Settings, Sort, TimeUnits},
     table::TablePane,
 };
-use crate::app::MAX_PRECISION;
+use crate::{
+    app::MAX_PRECISION,
+    utils::hash::{HashedDataFrame, HashedMetaDataFrame},
+};
 use egui::{ComboBox, DragValue, Ui};
 use egui_phosphor::regular::{CHART_BAR, TABLE};
 use egui_tiles::TileId;
@@ -33,10 +36,10 @@ impl Pane {
         }
     }
 
-    pub(crate) const fn data_frame(&self) -> &DataFrame {
+    pub(crate) const fn frame(&self) -> &HashedMetaDataFrame {
         match self {
-            Self::Plot(plot) => &plot.data_frame,
-            Self::Table(table) => &table.data_frame,
+            Self::Plot(plot) => &plot.frame,
+            Self::Table(table) => &table.frame,
         }
     }
 }
@@ -59,6 +62,4 @@ impl Pane {
 
 pub(crate) mod behavior;
 pub(crate) mod plot;
-pub(crate) mod settings;
 pub(crate) mod table;
-pub(crate) mod widgets;

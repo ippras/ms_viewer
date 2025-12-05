@@ -1,8 +1,12 @@
-use super::{
-    settings::{Settings, Sort, TimeUnits},
-    widgets::{ion_chromatogram::IonChromatogram, mass_spectrum::MassSpectrum},
+use super::settings::{Settings, Sort, TimeUnits};
+use crate::{
+    app::{
+        computers::{TableComputed, TableKey},
+        widgets::{ion_chromatogram::IonChromatogram, mass_spectrum::MassSpectrum},
+    },
+    r#const::*,
+    utils::hash::HashedMetaDataFrame,
 };
-use crate::app::computers::{TableComputed, TableKey};
 use egui::{Direction, Layout, Ui};
 use egui_extras::{Column, TableBuilder};
 use polars::prelude::*;
@@ -18,7 +22,7 @@ const COLUMN_COUNT: usize = 3;
 /// Table pane
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct TablePane {
-    pub(crate) data_frame: DataFrame,
+    pub(crate) frame: HashedMetaDataFrame,
     pub(crate) settings: Settings,
 }
 
@@ -38,14 +42,14 @@ impl TablePane {
         let width = ui.spacing().interact_size.x;
         let height = ui.spacing().interact_size.y;
         let data_frame = ui.memory_mut(|memory| {
-            memory.caches.cache::<TableComputed>().get(TableKey {
-                data_frame: &self.data_frame,
-                settings: &self.settings,
-            })
+            memory
+                .caches
+                .cache::<TableComputed>()
+                .get(TableKey::new(&self.frame.data, &self.settings))
         });
         let total_rows = data_frame.height();
         // let mass_to_charge = .cast(&DataType::UInt32)?;
-        let mass_to_charge = data_frame["MassToCharge"]
+        let mass_to_charge = data_frame[MASS_TO_CHARGE]
             .as_materialized_series()
             .round(2, RoundMode::HalfToEven)?;
         let mass_to_charge = mass_to_charge.f32()?;
@@ -99,13 +103,13 @@ impl TablePane {
         let width = ui.spacing().interact_size.x;
         let height = ui.spacing().interact_size.y;
         let data_frame = ui.memory_mut(|memory| {
-            memory.caches.cache::<TableComputed>().get(TableKey {
-                data_frame: &self.data_frame,
-                settings: &self.settings,
-            })
+            memory
+                .caches
+                .cache::<TableComputed>()
+                .get(TableKey::new(&self.frame.data, &self.settings))
         });
         let total_rows = data_frame.height();
-        let retention_time = data_frame["RetentionTime"].i32()?;
+        let retention_time = data_frame[RETENTION_TIME].as_materialized_series();
         TableBuilder::new(ui)
             .cell_layout(Layout::centered_and_justified(Direction::LeftToRight))
             .column(Column::auto_with_initial_suggestion(width))
@@ -132,10 +136,11 @@ impl TablePane {
                     });
                     // Retention time
                     row.col(|ui| {
-                        if let Some(value) = retention_time.get(row_index) {
-                            let formated = self.settings.retention_time.format(value as _);
-                            ui.label(formated).on_hover_text(formated.precision(None));
-                        }
+                        ui.label(retention_time.str_value(row_index).unwrap());
+                        // if let Some(value) = retention_time.str_value(row_index)? {
+                        //     let formated = self.settings.retention_time.format(value as _);
+                        //     ui.label(formated).on_hover_text(formated.precision(None));
+                        // }
                     });
                     // Mass spectrum
                     row.col(|ui| {
@@ -154,15 +159,15 @@ impl TablePane {
         let width = ui.spacing().interact_size.x;
         let height = ui.spacing().interact_size.y;
         let data_frame = ui.memory_mut(|memory| {
-            memory.caches.cache::<TableComputed>().get(TableKey {
-                data_frame: &self.data_frame,
-                settings: &self.settings,
-            })
+            memory
+                .caches
+                .cache::<TableComputed>()
+                .get(TableKey::new(&self.frame.data, &self.settings))
         });
         let total_rows = data_frame.height();
-        let retention_time = data_frame["RetentionTime"].i32()?;
-        let mass_to_charge = data_frame["MassToCharge"].f32()?;
-        let signal = data_frame["Signal"].u16()?;
+        let retention_time = data_frame[RETENTION_TIME].i32()?;
+        let mass_to_charge = data_frame[MASS_TO_CHARGE].f32()?;
+        let signal = data_frame[SIGNAL].u16()?;
         TableBuilder::new(ui)
             .cell_layout(Layout::centered_and_justified(Direction::LeftToRight))
             .column(Column::auto_with_initial_suggestion(width))
@@ -190,7 +195,7 @@ impl TablePane {
                     }
                 }
                 row.col(|ui| {
-                    ui.heading("Signal");
+                    ui.heading(SIGNAL);
                 });
             })
             .body(|body| {

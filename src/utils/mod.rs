@@ -3,5 +3,7 @@ pub(crate) use self::{
     polars::ChunkedArrayExt,
 };
 
+pub(crate) mod hash;
+
 mod egui_tiles;
 mod polars;
