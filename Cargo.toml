@@ -1,28 +1,30 @@
 [package]
 name = "ms_viewer"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
 bincode = "2.0.1"
 const_format = "0.2.35"
-eframe = { version = "0.33.2", default-features = false, features = [
+eframe = { version = "0.33.3", default-features = false, features = [
     "accesskit",
     "default_fonts",
     "glow",
     "persistence",
     "wayland",
 ] }
-egui = "0.33.2"
+
+egui = "0.33.3"
 egui-phosphor = "0.11.0"
-egui_extras = "0.33.2"
+egui_extras = "0.33.3"
 egui_plot = "0.34.0"
-egui_tiles = "0.14.0"
+egui_tiles = "0.14.1"
 indexmap = "2.12.1"
 itertools = "0.14.0"
-polars = { version = "0.52.0", features = [
+polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-features = false, features = [
     "bitwise",
+    "dtype-array",
     "dtype-duration",
     "dtype-i16",
     "dtype-struct",
@@ -39,20 +41,27 @@ polars = { version = "0.52.0", features = [
     #
     "dtype-datetime",
     # "dtype-decimal",
+    # "array_arithmetic",
     "timezones",
-], default-features = false }
+] }
 polars-utils = { version = "0.52.0", features = ["nightly"] }
 ron = "0.12.0"
 serde = { version = "1.0.228", features = ["derive"] }
-tracing = "0.1.43"
+tracing = "0.1.44"
 uom = { version = "0.37.0", features = ["serde"] }
 
 egui_ext = { git = "https://github.com/kgv/egui_ext" }
-metadata = { git = "https://github.com/ippras/metadata", features = [
+# metadata = { git = "https://github.com/ippras/metadata", features = [
+#     "egui",
+#     "polars",
+# ] }
+metadata = { git = "https://github.com/ippras/metadata", branch = "05f6f2d", features = [
     "egui",
     "polars",
 ] }
-polars_ext = { git = "https://github.com/kgv/polars_ext" }
+polars_ext = { git = "https://github.com/kgv/polars_ext", branch = "05f6f2d", features = [
+    "array",
+] }
 
 # native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

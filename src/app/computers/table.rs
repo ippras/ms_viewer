@@ -93,44 +93,40 @@ fn mass_to_charge(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     lazy_frame = lazy_frame
         .sort([RETENTION_TIME], Default::default())
         .group_by([col(MASS_TO_CHARGE).round(2, RoundMode::HalfToEven)])
-        .agg([as_struct(vec![col(RETENTION_TIME), col(SIGNAL)]).alias("ExtractedIonChromatogram")]);
+        .agg([as_struct(vec![col(RETENTION_TIME), col(SIGNAL)]).alias(EIC)]);
     if !key.explode {
         lazy_frame = lazy_frame.with_columns([
-            col("ExtractedIonChromatogram")
-                .list()
-                .len()
-                .name()
-                .suffix(".Count"),
-            col("ExtractedIonChromatogram")
+            col(EIC).list().len().name().suffix(".Count"),
+            col(EIC)
                 .list()
                 .eval(element().struct_().field_by_name(RETENTION_TIME))
                 .list()
                 .min()
-                .alias("RetentionTime.Min"),
-            col("ExtractedIonChromatogram")
+                .alias(formatcp!("{RETENTION_TIME}.{MIN}")),
+            col(EIC)
                 .list()
                 .eval(element().struct_().field_by_name(RETENTION_TIME))
                 .list()
                 .max()
-                .alias("RetentionTime.Max"),
-            col("ExtractedIonChromatogram")
+                .alias(formatcp!("{RETENTION_TIME}.{MAX}")),
+            col(EIC)
                 .list()
                 .eval(element().struct_().field_by_name(SIGNAL))
                 .list()
                 .min()
-                .alias("Signal.Min"),
-            col("ExtractedIonChromatogram")
+                .alias(formatcp!("{SIGNAL}.{MIN}")),
+            col(EIC)
                 .list()
                 .eval(element().struct_().field_by_name(SIGNAL))
                 .list()
                 .max()
-                .alias("Signal.Max"),
-            col("ExtractedIonChromatogram")
+                .alias(formatcp!("{SIGNAL}.{MAX}")),
+            col(EIC)
                 .list()
                 .eval(element().struct_().field_by_name(SIGNAL))
                 .list()
                 .sum()
-                .alias("Signal.Sum"),
+                .alias(formatcp!("{SIGNAL}.{SUM}")),
         ]);
     }
     lazy_frame = lazy_frame.sort([MASS_TO_CHARGE], Default::default());

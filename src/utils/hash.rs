@@ -6,11 +6,13 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+/// Hashed meta data frame
 pub type HashedMetaDataFrame = MetaDataFrame<Metadata, HashedDataFrame>;
 
 /// Hashed data frame
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct HashedDataFrame {
+    #[serde(rename = "bytes")]
     pub data_frame: DataFrame,
     pub hash: u64,
 }
@@ -18,17 +20,12 @@ pub struct HashedDataFrame {
 impl HashedDataFrame {
     pub const EMPTY: Self = Self {
         data_frame: DataFrame::empty(),
-        hash: 0,
+        hash: 0x342948b37d99fce2, // PlSeedableRandomStateQuality::fixed().build_hasher().finish()
     };
 
     pub fn new(mut data_frame: DataFrame) -> PolarsResult<Self> {
         let hash = hash_data_frame(&mut data_frame)?;
         Ok(Self { data_frame, hash })
-    }
-
-    pub fn update(&mut self) -> PolarsResult<()> {
-        self.hash = hash_data_frame(&mut self.data_frame)?;
-        Ok(())
     }
 }
 
@@ -62,7 +59,7 @@ impl Hash for HashedDataFrame {
 
 pub fn hash_data_frame(data_frame: &mut DataFrame) -> PolarsResult<u64> {
     Ok(data_frame
-        .with_row_index(PlSmallStr::from_static("Index"), None)?
+        .with_row_index(PlSmallStr::EMPTY, None)?
         .hash_rows(Some(PlSeedableRandomStateQuality::fixed()))?
         .xor_reduce()
         .unwrap_or_default())

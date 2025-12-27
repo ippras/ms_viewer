@@ -1,5 +1,6 @@
 use super::signal::SignalWidget;
-use crate::app::states::settings::Settings;
+use crate::{app::states::settings::Settings, r#const::*};
+use const_format::formatcp;
 use egui::{Direction, Layout, Response, RichText, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular::LIST;
@@ -19,37 +20,46 @@ impl IonChromatogram<'_> {
     fn show(&self, ui: &mut Ui) -> PolarsResult<Response> {
         let height = ui.spacing().interact_size.y;
         let width = ui.spacing().interact_size.x;
-        let ion_chromatogram = self.data_frame["ExtractedIonChromatogram"].list().unwrap();
-        let ion_chromatogram_series = ion_chromatogram.get_as_series(self.row_index).unwrap();
-        let t = ion_chromatogram_series.iter();
+        let eic = self.data_frame[EIC].list()?;
+        let eic_series = eic.get_as_series(self.row_index).unwrap();
         let response = ui
             .horizontal(|ui| {
-                ui.label(format_list_truncated!(t, 2))
+                ui.label(format_list_truncated!(eic_series.iter(), 2))
                     .on_hover_ui(|ui| {
                         if let Ok(count) =
-                            &self.data_frame["ExtractedIonChromatogram.Count"].get(self.row_index)
+                            &self.data_frame[formatcp!("{EIC}.{COUNT}")].get(self.row_index)
                         {
                             ui.label(format!("Count: {count}"));
                         }
                     })
                     .on_hover_ui(|ui| {
-                        ui.heading("RetentionTime");
-                        if let Ok(min) = &self.data_frame["RetentionTime.Min"].get(self.row_index) {
+                        ui.heading(RETENTION_TIME);
+                        if let Ok(min) = &self.data_frame[formatcp!("{RETENTION_TIME}.{MIN}")]
+                            .get(self.row_index)
+                        {
                             ui.label(format!("Min: {min}"));
                         }
-                        if let Ok(max) = &self.data_frame["RetentionTime.Max"].get(self.row_index) {
+                        if let Ok(max) = &self.data_frame[formatcp!("{RETENTION_TIME}.{MAX}")]
+                            .get(self.row_index)
+                        {
                             ui.label(format!("Max: {max}"));
                         }
                     })
                     .on_hover_ui(|ui| {
                         ui.heading("Signal");
-                        if let Ok(value) = &self.data_frame["Signal.Min"].get(self.row_index) {
+                        if let Ok(value) =
+                            &self.data_frame[formatcp!("{SIGNAL}.{MIN}")].get(self.row_index)
+                        {
                             ui.label(format!("Min: {value}"));
                         }
-                        if let Ok(value) = &self.data_frame["Signal.Max"].get(self.row_index) {
+                        if let Ok(value) =
+                            &self.data_frame[formatcp!("{SIGNAL}.{MAX}")].get(self.row_index)
+                        {
                             ui.label(format!("Max: {value}"));
                         }
-                        if let Ok(value) = &self.data_frame["Signal.Sum"].get(self.row_index) {
+                        if let Ok(value) =
+                            &self.data_frame[formatcp!("{SIGNAL}.{SUM}")].get(self.row_index)
+                        {
                             ui.label(format!("Sum: {value}"));
                         }
                     });
@@ -60,12 +70,11 @@ impl IonChromatogram<'_> {
                 ui.add_space(space);
                 ui.visuals_mut().button_frame = false;
                 ui.menu_button(RichText::new(LIST), |ui| {
-                    let total_rows = ion_chromatogram_series.len();
-                    let retention_time_signal = ion_chromatogram_series.struct_().unwrap();
-                    let retention_time_series = retention_time_signal
-                        .field_by_name("RetentionTime")
-                        .unwrap();
-                    let signal_series = retention_time_signal.field_by_name("Signal").unwrap();
+                    let total_rows = eic_series.len();
+                    let retention_time_signal = eic_series.struct_().unwrap();
+                    let retention_time_series =
+                        retention_time_signal.field_by_name(RETENTION_TIME).unwrap();
+                    let signal_series = retention_time_signal.field_by_name(SIGNAL).unwrap();
                     TableBuilder::new(ui)
                         .cell_layout(Layout::centered_and_justified(Direction::LeftToRight))
                         .column(Column::auto_with_initial_suggestion(width))
