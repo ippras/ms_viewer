@@ -1,13 +1,17 @@
 use crate::{
-    app::states::settings::{BarSort, Settings, Sort},
+    app::states::pane::settings::{
+        Plot, Settings, Sort, Threshold, mass_spectrum::Sort as MassSpectrumSort,
+    },
     r#const::*,
     utils::hash::HashedDataFrame,
 };
 use const_format::formatcp;
 use egui::{
+    Color32,
     emath::{Float, OrderedFloat},
     util::cache::{ComputerMut, FrameCache},
 };
+use egui_ext::color;
 use egui_plot::Bar;
 use indexmap::IndexMap;
 use polars::prelude::*;
@@ -27,11 +31,10 @@ pub(crate) struct Computer;
 impl Computer {
     fn try_compute(&mut self, key: Key<'_>) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
-        // Sort
-        lazy_frame = sort(lazy_frame, key);
+        println!("lazy_frame P0: {}", lazy_frame.clone().collect().unwrap());
         // Compute
         let data_frame = lazy_frame.collect()?;
-        println!("data_frame: {:?}", data_frame.schema());
+        // println!("data_frame: {:?}", data_frame.schema());
         let value = compute(&data_frame, key)?;
         Ok(value)
     }
@@ -47,26 +50,22 @@ impl ComputerMut<Key<'_>, Value> for Computer {
 #[derive(Clone, Copy, Hash, Debug)]
 pub struct Key<'a> {
     pub(crate) frame: &'a HashedDataFrame,
-    pub(crate) bar_sort: BarSort,
-    pub(crate) bar_width: OrderedFloat<f64>,
+    pub(crate) mass_spectrum_sort: MassSpectrumSort,
     pub(crate) normalize_signal: bool,
-    pub(crate) peak_max: [bool; 2],
-    pub(crate) peak_min: [bool; 2],
     pub(crate) sort: Sort,
-    pub(crate) stack: bool,
+    pub(crate) plot: Plot,
+    pub(crate) threshold: Threshold,
 }
 
 impl<'a> Key<'a> {
     pub(crate) fn new(frame: &'a HashedDataFrame, settings: &Settings) -> Self {
         Self {
             frame,
-            bar_sort: settings.plot.bar_sort,
-            bar_width: settings.plot.bar_width.ord(),
+            mass_spectrum_sort: settings.mass_spectrum.sort,
             normalize_signal: settings.signal.normalize,
-            peak_max: settings.peak_max,
-            peak_min: settings.peak_min,
             sort: settings.sort,
-            stack: settings.plot.stack,
+            plot: settings.plot,
+            threshold: settings.threshold,
         }
     }
 }
@@ -74,31 +73,13 @@ impl<'a> Key<'a> {
 /// Plot value
 #[derive(Clone, Debug, Default)]
 pub(crate) struct Value {
-    pub(crate) bars: IndexMap<OrderedFloat<f32>, Vec<Bar>>,
-    pub(crate) mass_spectrums: IndexMap<OrderedFloat<f64>, Vec<(f32, f64)>>,
+    pub(crate) bars: IndexMap<OrderedFloat<f64>, Vec<Bar>>,
+    pub(crate) thresholds: IndexMap<OrderedFloat<f64>, bool>,
+    pub(crate) mass_spectrums: IndexMap<OrderedFloat<f64>, Vec<(f64, f64)>>,
     pub(crate) mean: Option<OrderedFloat<f64>>,
     pub(crate) median: Option<OrderedFloat<f64>>,
     pub(crate) rolling_mean: Vec<[f64; 2]>,
-}
-
-/// Sort
-fn sort(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
-    // Sort mass spectrum
-    lazy_frame = match key.bar_sort {
-        BarSort::MassToCharge => {
-            lazy_frame.with_column(col(MASS_SPECTRUM).list().eval(element().sort_by(
-                [element().struct_().field_by_name(MASS_TO_CHARGE)],
-                SortMultipleOptions::new(),
-            )))
-        }
-        BarSort::Signal => {
-            lazy_frame.with_column(col(MASS_SPECTRUM).list().eval(element().sort_by(
-                [element().struct_().field_by_name(SIGNAL)],
-                SortMultipleOptions::new(),
-            )))
-        }
-    };
-    lazy_frame
+    pub(crate) rolling_median: Vec<[f64; 2]>,
 }
 
 fn compute(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
@@ -110,31 +91,45 @@ fn compute(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
 
 // RETENTION_TIME: Vec<Bar>, stacked, sorted by MASS_TO_CHARGE
 fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
-    let filter = data_frame["_Filter"].bool()?;
-    let retention_time = &data_frame[RETENTION_TIME].f64()?.filter(filter)?;
-    let mass_spectrum = &data_frame[MASS_SPECTRUM].list()?.filter(filter)?;
+    let meta = data_frame[META].struct_()?;
+    let threshold_series = meta.field_by_name(THRESHOLD)?;
+    let threshold = threshold_series.bool()?;
+    let retention_time = if key.threshold.filter {
+        &data_frame[RETENTION_TIME].f64()?.filter(threshold)?
+    } else {
+        data_frame[RETENTION_TIME].f64()?
+    };
+    let mass_spectrum = if key.threshold.filter {
+        &data_frame[MASS_SPECTRUM].list()?.filter(threshold)?
+    } else {
+        data_frame[MASS_SPECTRUM].list()?
+    };
     let mut value = Value::default();
     let mut offsets = HashMap::new();
-    // RETENTION_TIME | MASS_SPECTRUM
-    for (retention_time, mass_spectrum) in zip(retention_time, mass_spectrum) {
+    for ((retention_time, mass_spectrum), threshold) in
+        zip(zip(retention_time, mass_spectrum), threshold)
+    {
         let Some(retention_time) = retention_time else {
             polars_bail!(NoData: "{RETENTION_TIME}");
         };
         let Some(mass_spectrum) = mass_spectrum else {
             polars_bail!(NoData: "{MASS_SPECTRUM}");
         };
+        let Some(threshold) = threshold else {
+            polars_bail!(NoData: "{THRESHOLD}");
+        };
+        value
+            .thresholds
+            .entry(retention_time.ord())
+            .or_insert(threshold);
         let mass_spectrum = mass_spectrum.struct_()?;
         // MASS_SPECTRUM: MASS_TO_CHARGE | SIGNAL
         for (mass_to_charge, signal) in zip(
-            mass_spectrum.field_by_name(MASS_TO_CHARGE)?.f32()?,
+            mass_spectrum.field_by_name(MASS_TO_CHARGE)?.f64()?,
             mass_spectrum.field_by_name(SIGNAL)?.f64()?,
         ) {
-            let Some(mass_to_charge) = mass_to_charge else {
-                polars_bail!(NoData: "{MASS_TO_CHARGE}");
-            };
-            let Some(signal) = signal else {
-                polars_bail!(NoData: "{SIGNAL}");
-            };
+            let mass_to_charge = mass_to_charge.unwrap_or_default();
+            let signal = signal.unwrap_or_default();
             value
                 .mass_spectrums
                 .entry(retention_time.ord())
@@ -144,8 +139,13 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
             let offset = offsets.entry(retention_time.ord()).or_default();
             let mut bar = Bar::new(retention_time, signal)
                 .name(mass_to_charge.to_string())
-                .width(key.bar_width.0);
-            if key.stack {
+                .width(key.plot.width.0);
+            if key.plot.fill {
+                bar = bar.fill(color(mass_to_charge.round() as usize));
+            }
+            // .fill(Color32::RED.lerp_to_gamma(Color32::BLUE, mass_to_charge as f32 % 10.0))
+            // .stroke((1.0, color(mass_to_charge.round() as usize)));
+            if key.plot.stack {
                 bar = bar.base_offset(*offset);
             }
             *offset += signal;
@@ -156,20 +156,30 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
                 .push(bar);
         }
     }
-    if key.stack {
+    if key.plot.stack {
         let retention_time = data_frame[RETENTION_TIME].f64()?;
-        let rolling_mean = data_frame[formatcp!("_y.{ROLLING}.{MEAN}")].f64()?;
-        let sum = &data_frame[formatcp!("_{SIGNAL}.{SUM}")];
-        value.mean = sum.f64()?.mean().map(Float::ord);
-        value.median = sum.f64()?.median().map(Float::ord);
-        for (retention_time, rolling_mean) in zip(retention_time, rolling_mean) {
+        let rolling_mean_series = meta.field_by_name(formatcp!("{ROLLING}.{SIGNAL}.{MEAN}"))?;
+        let rolling_median_series = meta.field_by_name(formatcp!("{ROLLING}.{SIGNAL}.{MEDIAN}"))?;
+        let rolling_mean = rolling_mean_series.f64()?;
+        let rolling_median = rolling_median_series.f64()?;
+        let sum_series = meta.field_by_name(formatcp!("{SIGNAL}.{SUM}"))?;
+        let sum = sum_series.f64()?;
+        value.mean = sum.mean().map(Float::ord);
+        value.median = sum.median().map(Float::ord);
+        for (retention_time, (rolling_mean, rolling_median)) in
+            zip(retention_time, zip(rolling_mean, rolling_median))
+        {
             let Some(retention_time) = retention_time else {
                 polars_bail!(NoData: "{RETENTION_TIME}");
             };
             let Some(rolling_mean) = rolling_mean else {
                 continue;
             };
+            let Some(rolling_median) = rolling_median else {
+                continue;
+            };
             value.rolling_mean.push([retention_time, rolling_mean]);
+            value.rolling_median.push([retention_time, rolling_median]);
         }
     }
     Ok(value)

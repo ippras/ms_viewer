@@ -4,13 +4,13 @@ use crate::{
             plot::{Computed as PlotComputed, Key as PlotKey},
             table::{Computed as TableComputed, Key as TableKey},
         },
-        states::settings::{Settings, Sort},
+        states::pane::settings::{Settings, Sort},
     },
     r#const::*,
     utils::hash::{HashedDataFrame, HashedMetaDataFrame},
 };
 use egui::{
-    Align2, RichText, Ui, Vec2,
+    Align2, Color32, RichText, Ui, Vec2,
     emath::{Float, OrderedFloat, round_to_decimals},
 };
 use egui_ext::color;
@@ -29,15 +29,14 @@ use std::{
 };
 use tracing::error;
 
-/// Plot pane
+/// Plot view
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub(crate) struct PlotPane {
+pub(crate) struct PlotView {
     pub(crate) frame: HashedMetaDataFrame,
-    // pub(crate) computed: HashedDataFrame,
     pub(crate) settings: Settings,
 }
 
-impl PlotPane {
+impl PlotView {
     pub(super) fn ui(&mut self, ui: &mut Ui) {
         match self.settings.sort {
             Sort::RetentionTime if !self.settings.explode => self.grouped_by_retention_time(ui),
@@ -301,6 +300,11 @@ impl PlotPane {
             for (mass_to_charge, bars) in value.bars {
                 let mass_spectrums = mass_spectrums.clone();
                 let index = mass_to_charge.0.round() as usize;
+                // bar_chart = if !self.settings.threshold.filter {
+                //     bar_chart.color(Color32::GRAY)
+                // } else {
+                //     bar_chart.color(color(index))
+                // };
                 let bar_chart = BarChart::new("Bar chart", bars)
                     .color(color(index))
                     .element_formatter(Box::new(move |bar, _bar_chart| {
@@ -341,7 +345,10 @@ impl PlotPane {
             }
             // Rolling mean
             if !value.rolling_mean.is_empty() {
-                ui.line(Line::new("Rolling mean", value.rolling_mean));
+                ui.line(Line::new("RollingMean", value.rolling_mean));
+            }
+            if !value.rolling_median.is_empty() {
+                ui.line(Line::new("RollingMedian", value.rolling_median));
             }
         });
     }

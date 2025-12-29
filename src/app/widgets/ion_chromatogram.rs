@@ -1,5 +1,5 @@
 use super::signal::SignalWidget;
-use crate::{app::states::settings::Settings, r#const::*};
+use crate::{app::states::pane::settings::Settings, r#const::*};
 use const_format::formatcp;
 use egui::{Direction, Layout, Response, RichText, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
@@ -27,9 +27,9 @@ impl IonChromatogram<'_> {
                 ui.label(format_list_truncated!(eic_series.iter(), 2))
                     .on_hover_ui(|ui| {
                         if let Ok(count) =
-                            &self.data_frame[formatcp!("{EIC}.{COUNT}")].get(self.row_index)
+                            &self.data_frame[formatcp!("{EIC}.{LEN}")].get(self.row_index)
                         {
-                            ui.label(format!("Count: {count}"));
+                            ui.label(format!("Length: {count}"));
                         }
                     })
                     .on_hover_ui(|ui| {

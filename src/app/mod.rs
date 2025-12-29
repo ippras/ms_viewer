@@ -1,63 +1,67 @@
-use self::panes::{Pane, behavior::Behavior};
-use crate::utils::{
-    TreeExt,
-    hash::{HashedDataFrame, HashedMetaDataFrame},
+use self::panes::{Behavior, Pane};
+use crate::{
+    app::{
+        states::State,
+        widgets::buttons::{
+            GridButton, HorizontalButton, LeftPanelButton, ReactiveButton, ResetButton,
+            SettingsButton, TabsButton, VerticalButton,
+        },
+    },
+    r#const::EM_DASH,
+    localization::ContextExt as _,
+    utils::{
+        TreeExt,
+        hash::{HashedDataFrame, HashedMetaDataFrame},
+    },
 };
 use anyhow::Result;
 use data::{Data, Format};
 use eframe::{APP_KEY, CreationContext, Storage, get_value, set_value};
 use egui::{
-    Align, Align2, CentralPanel, Color32, Context, DroppedFile, FontDefinitions, Frame, Id,
-    LayerId, Layout, Order, RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel, menu::bar,
-    warn_if_debug_build,
+    Align, Align2, CentralPanel, CollapsingHeader, Color32, Context, DroppedFile, FontDefinitions,
+    Frame, Id, LayerId, Layout, MenuBar, Order, RichText, ScrollArea, SidePanel, TextStyle,
+    TopBottomPanel, Ui, Widget as _, Window, menu::bar, warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
+use egui_l20n::ResponseExt;
 use egui_phosphor::{
     Variant, add_to_fonts,
     regular::{
-        ARROWS_CLOCKWISE, FLOPPY_DISK, GRID_FOUR, ROCKET, SIDEBAR_SIMPLE, SQUARE_SPLIT_HORIZONTAL,
-        SQUARE_SPLIT_VERTICAL, TABLE, TABS, TRASH,
+        ARROWS_CLOCKWISE, FLOPPY_DISK, GRID_FOUR, INFO, ROCKET, SIDEBAR_SIMPLE, SLIDERS_HORIZONTAL,
+        SQUARE_SPLIT_HORIZONTAL, SQUARE_SPLIT_VERTICAL, TABLE, TABS, TRASH,
     },
 };
-use egui_tiles::{ContainerKind, Tile, Tree};
+use egui_tiles::{Container, ContainerKind, Tile, TileId, Tree};
 use metadata::polars::MetaDataFrame;
-use panes::table::TablePane;
+use panes::table::TableView;
 use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Write, io::Cursor, str, time::Duration};
 use tracing::{error, info, trace};
 
-macro icon($icon:expr) {
-    RichText::new($icon).size(SIZE)
-}
-
-macro localize($text:literal) {
-    $text
-}
-
 /// IEEE 754-2008
 const MAX_PRECISION: usize = 16;
 const _NOTIFICATIONS_DURATION: Duration = Duration::from_secs(15);
-const SIZE: f32 = 32.0;
+const ICON_SIZE: f32 = 32.0;
+const ID_SOURCE: &str = "MS_VIEWER";
 
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct App {
-    reactive: bool,
-    // Panels
-    left_panel: bool,
+    // // Panels
+    // left_panel: bool,
     // Panes
     tree: Tree<Pane>,
+    #[serde(skip)]
     behavior: Behavior,
 }
 
 impl Default for App {
     fn default() -> Self {
         Self {
-            reactive: true,
-            left_panel: true,
-            tree: Tree::empty("tree"),
-            behavior: Default::default(),
+            // left_panel: true,
+            tree: Tree::empty("Tree"),
+            behavior: Behavior { close: None },
         }
     }
 }
@@ -70,6 +74,7 @@ impl App {
         let mut fonts = FontDefinitions::default();
         add_to_fonts(&mut fonts, Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.set_localizations();
 
         // Default::default()
         // Load previous app state (if any).
@@ -108,52 +113,53 @@ impl App {
         }) {
             info!(?dropped_files);
             for dropped_file in dropped_files {
-                // let data_frame: DataFrame = match dropped_file.extension() {
-                //     Some("bin") => bincode::deserialize(&fs::read(&args.path)?)?,
-                //     Some("ron") => ron::de::from_str(&fs::read_to_string(&args.path)?)?,
-                //     _ => panic!("unsupported input file extension"),
-                // };
-                // dropped_file.extension();
                 let bytes = dropped_file.bytes().unwrap();
                 let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
                 let data = HashedDataFrame::new(frame.data).unwrap();
-                self.tree.insert_pane(Pane::Table(TablePane {
-                    frame: MetaDataFrame::new(frame.meta, data),
-                    settings: Default::default(),
-                }));
-                // match bin(&dropped_file) {
-                //     Ok(data_frame) => {
-                //         trace!(?data_frame);
-                //         self.tree.insert_pane(Pane::Table(TablePane {
-                //             data_frame,
-                //             settings: Default::default(),
-                //         }));
-                //     }
-                //     Err(error) => {
-                //         error!(%error);
-                //         // self.toasts
-                //         //     .error(format!("{}: {error}", dropped.display()))
-                //         //     .set_closable(true)
-                //         //     .set_duration(Some(NOTIFICATIONS_DURATION));
-                //         continue;
-                //     }
-                // };
+                self.tree
+                    .insert_pane(Pane::new(MetaDataFrame::new(frame.meta, data)));
             }
         }
     }
 }
 
+// Panels
 impl App {
-    fn panels(&mut self, ctx: &Context) {
-        self.top_panel(ctx);
+    fn container_ui(&self, ui: &mut Ui, container: &Container, depth: usize) {
+        CollapsingHeader::new(format!(
+            "{:?}[{}]",
+            container.kind(),
+            container.num_children(),
+        ))
+        .default_open(depth < 1)
+        .show(ui, |ui| {
+            for child in container.children() {
+                match self.tree.tiles.get(*child) {
+                    Some(Tile::Container(container)) => self.container_ui(ui, container, depth + 1),
+                    Some(Tile::Pane(pane)) => self.pane_ui(ui, pane, depth + 1),
+                    None => {
+                        ui.label(EM_DASH);
+                    }
+                }
+            }
+        });
+    }
+
+    fn pane_ui(&self, ui: &mut Ui, pane: &Pane, depth: usize) {
+        ui.label(pane.title(Some(" ")))
+            .on_hover_text(pane.id().to_string());
+    }
+
+    fn panels(&mut self, ctx: &Context, state: &mut State) {
+        self.top_panel(ctx, state);
         self.bottom_panel(ctx);
-        self.left_panel(ctx);
+        self.left_panel(ctx, state);
         self.central_panel(ctx);
     }
 
     // Bottom panel
     fn bottom_panel(&mut self, ctx: &Context) {
-        TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+        TopBottomPanel::bottom("BottomPanel").show(ctx, |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 warn_if_debug_build(ui);
                 ui.label(RichText::new(env!("CARGO_PKG_VERSION")).small());
@@ -173,104 +179,57 @@ impl App {
     }
 
     // Left panel
-    fn left_panel(&mut self, ctx: &Context) {
-        SidePanel::left("left_panel")
+    fn left_panel(&mut self, ctx: &Context, state: &mut State) {
+        SidePanel::left("LeftPanel")
             .frame(Frame::side_top_panel(&ctx.style()))
             .resizable(true)
-            .show_animated(ctx, self.left_panel, |ui| {
+            .show_animated(ctx, state.settings.left_panel, |ui| {
                 ScrollArea::vertical().show(ui, |ui| {
-                    self.behavior.settings(ui, &mut self.tree);
-                    ui.separator();
+                    if let Some(root) = self
+                        .tree
+                        .root
+                        .and_then(|tile_id| self.tree.tiles.get_container(tile_id))
+                    {
+                        self.container_ui(ui, root, 0);
+                    }
                 });
             });
     }
 
     // Top panel
-    fn top_panel(&mut self, ctx: &Context) {
-        TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            bar(ui, |ui| {
-                // Left panel
-                ui.toggle_value(&mut self.left_panel, icon!(SIDEBAR_SIMPLE))
-                    .on_hover_text(localize!("left_panel"));
+    fn top_panel(&mut self, ctx: &Context, state: &mut State) {
+        TopBottomPanel::top("TopPanel").show(ctx, |ui| {
+            MenuBar::new().ui(ui, |ui| {
+                LeftPanelButton::new(&mut state.settings.left_panel)
+                    .size(ICON_SIZE)
+                    .ui(ui);
                 ui.separator();
-                ui.light_dark_button(SIZE);
+                ReactiveButton::new(&mut state.settings.reactive)
+                    .size(ICON_SIZE)
+                    .ui(ui);
                 ui.separator();
-                ui.toggle_value(&mut self.reactive, icon!(ROCKET))
-                    .on_hover_text("reactive")
-                    .on_hover_text(localize!("reactive_description_enabled"))
-                    .on_disabled_hover_text(localize!("reactive_description_disabled"));
+                // Light/Dark
+                ui.light_dark_button(ICON_SIZE);
                 ui.separator();
-                if ui
-                    .button(icon!(TRASH))
-                    .on_hover_text(localize!("reset_application"))
-                    .clicked()
-                {
-                    *self = Default::default();
-                }
+                ResetButton::new(&mut state.settings.reset_state)
+                    .size(ICON_SIZE)
+                    .ui(ui);
                 ui.separator();
-                if ui
-                    .button(icon!(ARROWS_CLOCKWISE))
-                    .on_hover_text(localize!("reset_gui"))
-                    .clicked()
-                {
-                    ui.memory_mut(|memory| *memory = Default::default());
-                }
+                self.layouts(ui, state);
                 ui.separator();
-                if ui
-                    .button(icon!(SQUARE_SPLIT_VERTICAL))
-                    .on_hover_text(localize!("vertical"))
-                    .clicked()
-                {
-                    if let Some(id) = self.tree.root {
-                        if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {
-                            container.set_kind(ContainerKind::Vertical);
-                        }
-                    }
-                }
-                if ui
-                    .button(icon!(SQUARE_SPLIT_HORIZONTAL))
-                    .on_hover_text(localize!("horizontal"))
-                    .clicked()
-                {
-                    if let Some(id) = self.tree.root {
-                        if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {
-                            container.set_kind(ContainerKind::Horizontal);
-                        }
-                    }
-                }
-                if ui
-                    .button(icon!(GRID_FOUR))
-                    .on_hover_text(localize!("grid"))
-                    .clicked()
-                {
-                    if let Some(id) = self.tree.root {
-                        if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {
-                            container.set_kind(ContainerKind::Grid);
-                        }
-                    }
-                }
-                if ui
-                    .button(icon!(TABS))
-                    .on_hover_text(localize!("tabs"))
-                    .clicked()
-                {
-                    if let Some(id) = self.tree.root {
-                        if let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id) {
-                            container.set_kind(ContainerKind::Tabs);
-                        }
-                    }
-                }
-                //
+                SettingsButton::new(&mut state.windows.open_settings)
+                    .size(ICON_SIZE)
+                    .ui(ui);
                 ui.separator();
                 // Save
-                ui.menu_button(icon!(FLOPPY_DISK), |ui| {
+                ui.menu_button(FLOPPY_DISK, |ui| {
                     if ui.button("RON").clicked() {
                         for tile_id in self.tree.active_tiles() {
                             if let Some(tile) = self.tree.tiles.get(tile_id) {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            frame: pane.frame().clone(),
+                                            frame: pane.frame.clone(),
                                         }
                                         .save("df.msv.ron", Format::Ron)
                                         .unwrap();
@@ -286,7 +245,7 @@ impl App {
                                 match tile {
                                     Tile::Pane(pane) => {
                                         Data {
-                                            frame: pane.frame().clone(),
+                                            frame: pane.frame.clone(),
                                         }
                                         .save("df.msv.bin", Format::Ron)
                                         .unwrap();
@@ -363,6 +322,67 @@ impl App {
             });
         });
     }
+
+    fn layouts(&mut self, ui: &mut Ui, state: &mut State) {
+        VerticalButton::new(&mut state.settings.layout.container_kind)
+            .size(ICON_SIZE)
+            .ui(ui);
+        HorizontalButton::new(&mut state.settings.layout.container_kind)
+            .size(ICON_SIZE)
+            .ui(ui);
+        GridButton::new(&mut state.settings.layout.container_kind)
+            .size(ICON_SIZE)
+            .ui(ui);
+        TabsButton::new(&mut state.settings.layout.container_kind)
+            .size(ICON_SIZE)
+            .ui(ui);
+    }
+}
+
+// Windows
+impl App {
+    fn windows(&mut self, ctx: &Context, state: &mut State) {
+        // self.about_window(ctx, state);
+        self.settings_window(ctx, state);
+    }
+
+    // fn about_window(&mut self, ctx: &Context, state: &mut State) {
+    //     Window::new(format!("{INFO} About"))
+    //         .open(&mut state.windows.open_about)
+    //         .show(ctx, |ui| About.ui(ui));
+    // }
+
+    fn settings_window(&mut self, ctx: &Context, state: &mut State) {
+        Window::new(format!("{SLIDERS_HORIZONTAL} Settings"))
+            .open(&mut state.windows.open_settings)
+            .show(ctx, |ui| {
+                state.settings.show(ui);
+            });
+    }
+}
+
+impl App {
+    fn state(&mut self, ctx: &Context, state: &mut State) {
+        if state.settings.reset_state {
+            *self = Default::default();
+            // Cache
+            let caches = ctx.memory_mut(|memory| memory.caches.clone());
+            ctx.memory_mut(|memory| {
+                memory.caches = caches;
+            });
+            ctx.set_localizations();
+            state.settings.reset_state = false;
+        }
+        if let Some(container_kind) = state.settings.layout.container_kind.take()
+            && let Some(id) = self.tree.root
+            && let Some(Tile::Container(container)) = self.tree.tiles.get_mut(id)
+        {
+            container.set_kind(container_kind);
+        }
+        if state.settings.reactive {
+            ctx.request_repaint();
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -373,17 +393,16 @@ impl eframe::App for App {
 
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        self.panels(ctx);
+        let mut state = State::load(ctx, Id::new(ID_SOURCE));
+        // Pre update
+        self.panels(ctx, &mut state);
+        self.windows(ctx, &mut state);
+        // Post update
         self.drag_and_drop(ctx);
-        if self.reactive {
-            ctx.request_repaint();
-        }
+        self.state(ctx, &mut state);
+        state.store(ctx, Id::new(ID_SOURCE));
     }
 }
-
-// fn bin(dropped_file: &DroppedFile) -> Result<DataFrame> {
-//     Ok(bincode::deserialize(&dropped_file.bytes()?)?)
-// }
 
 mod computers;
 mod data;

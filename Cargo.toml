@@ -14,7 +14,6 @@ eframe = { version = "0.33.3", default-features = false, features = [
     "persistence",
     "wayland",
 ] }
-
 egui = "0.33.3"
 egui-phosphor = "0.11.0"
 egui_extras = "0.33.3"
@@ -22,6 +21,7 @@ egui_plot = "0.34.0"
 egui_tiles = "0.14.1"
 indexmap = "2.12.1"
 itertools = "0.14.0"
+ordered-float = { version = "5.1.0", features = ["serde"] }
 polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-features = false, features = [
     "bitwise",
     "dtype-array",
@@ -46,15 +46,17 @@ polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-f
 ] }
 polars-utils = { version = "0.52.0", features = ["nightly"] }
 ron = "0.12.0"
+scirs2 = { version = "0.1.1", default-features = false, features = [
+    "spatial",
+    "stats",
+] }
+scirs2-core = "0.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 tracing = "0.1.44"
 uom = { version = "0.37.0", features = ["serde"] }
 
 egui_ext = { git = "https://github.com/kgv/egui_ext" }
-# metadata = { git = "https://github.com/ippras/metadata", features = [
-#     "egui",
-#     "polars",
-# ] }
+egui_l20n = { git = "https://github.com/kgv/egui_l20n", features = ["macros"] }
 metadata = { git = "https://github.com/ippras/metadata", branch = "05f6f2d", features = [
     "egui",
     "polars",

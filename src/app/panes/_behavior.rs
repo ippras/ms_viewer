@@ -1,9 +1,7 @@
 use super::{Pane, plot::PlotPane, table::TablePane};
-use crate::{
-    app::{icon, localize},
-    utils::ContainerExt,
-};
+use crate::utils::ContainerExt;
 use egui::{CollapsingHeader, CursorIcon, RichText, Ui, WidgetText};
+use egui_l20n::UiExt;
 use egui_phosphor::regular::{CHART_BAR, LINK, TABLE, X};
 use egui_tiles::{Tile, TileId, Tiles, Tree, UiResponse};
 use serde::{Deserialize, Serialize};
@@ -42,8 +40,8 @@ impl Behavior {
                             Pane::Table(_) => CHART_BAR,
                         };
                         if ui
-                            .button(icon!(text).size(16.0))
-                            .on_hover_text(localize!("table"))
+                            .button(RichText::new(text).size(16.0))
+                            .on_hover_text(ui.localize("Table"))
                             .clicked()
                         {
                             *pane = match pane {
