@@ -487,9 +487,12 @@ fn threshold(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
                 for (source, tagret) in zip(source.list()?, tagret.list()?) {
                     let source = source.ok_or(polars_err!(NoData: "SOURCE"))?;
                     let r#struct = source.struct_()?;
-                    let mass_to_charge_series = r#struct.field_by_name(MASS_TO_CHARGE)?;
-                    let mass_to_charge = mass_to_charge_series.f64()?;
-                    let signal_series = r#struct.field_by_name(SIGNAL)?;
+                    for (mass_to_charge, signal) in zip(
+                        r#struct.field_by_name(MASS_TO_CHARGE)?.f64()?,
+                        r#struct.field_by_name(SIGNAL)?.f64()?,
+                    ) {
+                        //
+                    }
                     let signal = signal_series.f64()?;
                     let tagret = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
                     let tagret = tagret.f64()?;
