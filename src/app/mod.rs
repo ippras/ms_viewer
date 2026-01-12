@@ -9,21 +9,24 @@ use crate::{
     },
     r#const::EM_DASH,
     localization::ContextExt as _,
-    utils::{TreeExt, hash::HashedDataFrame},
+    utils::{
+        TreeExt,
+        hash::{HashedDataFrame, HashedMetaDataFrame},
+    },
 };
 use data::Data;
 use eframe::{APP_KEY, CreationContext, Storage, get_value, set_value};
 use egui::{
     Align, Align2, CentralPanel, CollapsingHeader, Color32, Context, FontDefinitions, Frame, Id,
-    LayerId, Layout, MenuBar, Order, RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel,
-    Ui, Widget as _, Window, warn_if_debug_build,
+    Label, LayerId, Layout, MenuBar, Order, RichText, ScrollArea, SidePanel, TextStyle,
+    TopBottomPanel, Ui, Widget as _, Window, warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
 use egui_phosphor::{
     Variant, add_to_fonts,
     regular::{FLOPPY_DISK, SLIDERS_HORIZONTAL},
 };
-use egui_tiles::{Container, Tile, Tree};
+use egui_tiles::{Container, Tile, TileId, Tree};
 use metadata::polars::MetaDataFrame;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Write, str, time::Duration};
@@ -38,8 +41,6 @@ const ID_SOURCE: &str = "MS_VIEWER";
 #[derive(Deserialize, Serialize)]
 #[serde(default)]
 pub struct App {
-    // // Panels
-    // left_panel: bool,
     // Panes
     tree: Tree<Pane>,
     #[serde(skip)]
@@ -73,73 +74,10 @@ impl App {
             .and_then(|storage| get_value(storage, APP_KEY))
             .unwrap_or_default()
     }
-
-    fn drag_and_drop(&mut self, ctx: &Context) {
-        // Preview hovering files
-        if let Some(text) = ctx.input(|input| {
-            (!input.raw.hovered_files.is_empty()).then(|| {
-                let mut text = String::from("Dropping files:");
-                for file in &input.raw.hovered_files {
-                    write!(text, "\n{}", file.display()).ok();
-                }
-                text
-            })
-        }) {
-            let painter =
-                ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("file_drop_target")));
-            let screen_rect = ctx.screen_rect();
-            painter.rect_filled(screen_rect, 0.0, Color32::from_black_alpha(192));
-            painter.text(
-                screen_rect.center(),
-                Align2::CENTER_CENTER,
-                text,
-                TextStyle::Heading.resolve(&ctx.style()),
-                Color32::WHITE,
-            );
-        }
-        // Parse dropped files
-        if let Some(dropped_files) = ctx.input(|input| {
-            (!input.raw.dropped_files.is_empty()).then_some(input.raw.dropped_files.clone())
-        }) {
-            info!(?dropped_files);
-            for dropped_file in dropped_files {
-                let bytes = dropped_file.bytes().unwrap();
-                let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
-                let data = HashedDataFrame::new(frame.data).unwrap();
-                self.tree
-                    .insert_pane(Pane::new(MetaDataFrame::new(frame.meta, data)));
-            }
-        }
-    }
 }
 
 // Panels
 impl App {
-    fn container_ui(&self, ui: &mut Ui, container: &Container, depth: usize) {
-        CollapsingHeader::new(format!(
-            "{:?}[{}]",
-            container.kind(),
-            container.num_children(),
-        ))
-        .default_open(depth < 1)
-        .show(ui, |ui| {
-            for child in container.children() {
-                match self.tree.tiles.get(*child) {
-                    Some(Tile::Container(container)) => self.container_ui(ui, container, depth + 1),
-                    Some(Tile::Pane(pane)) => self.pane_ui(ui, pane, depth + 1),
-                    None => {
-                        ui.label(EM_DASH);
-                    }
-                }
-            }
-        });
-    }
-
-    fn pane_ui(&self, ui: &mut Ui, pane: &Pane, depth: usize) {
-        ui.label(pane.title(Some(" ")))
-            .on_hover_text(pane.id().to_string());
-    }
-
     fn panels(&mut self, ctx: &Context, state: &mut State) {
         self.top_panel(ctx, state);
         self.bottom_panel(ctx);
@@ -174,16 +112,44 @@ impl App {
             .frame(Frame::side_top_panel(&ctx.style()))
             .resizable(true)
             .show_animated(ctx, state.settings.left_panel, |ui| {
+                ui.heading("Heading");
                 ScrollArea::vertical().show(ui, |ui| {
-                    if let Some(root) = self
-                        .tree
-                        .root
-                        .and_then(|tile_id| self.tree.tiles.get_container(tile_id))
-                    {
-                        self.container_ui(ui, root, 0);
+                    if let Some(tile_id) = self.tree.root {
+                        self.child_ui(ui, tile_id, 0);
                     }
                 });
             });
+    }
+
+    fn child_ui(&self, ui: &mut Ui, tile_id: TileId, depth: usize) {
+        match self.tree.tiles.get(tile_id) {
+            Some(Tile::Container(container)) => self.container_ui(ui, container, depth + 1),
+            Some(Tile::Pane(pane)) => self.pane_ui(ui, pane),
+            None => {
+                ui.label(EM_DASH);
+            }
+        }
+    }
+
+    fn container_ui(&self, ui: &mut Ui, container: &Container, depth: usize) {
+        CollapsingHeader::new(format!(
+            "{:?}[{}]",
+            container.kind(),
+            container.num_children(),
+        ))
+        .default_open(depth < 1)
+        .show(ui, |ui| {
+            for &tile_id in container.children() {
+                self.child_ui(ui, tile_id, depth + 1);
+            }
+        });
+    }
+
+    fn pane_ui(&self, ui: &mut Ui, pane: &Pane) {
+        Label::new(pane.title(Some(" ")))
+            .truncate()
+            .ui(ui)
+            .on_hover_text(pane.id().to_string());
     }
 
     // Top panel
@@ -339,6 +305,14 @@ impl App {
 }
 
 impl App {
+    fn data(&mut self, ctx: &Context) {
+        if let Some(frame) =
+            ctx.data_mut(|data| data.remove_temp::<HashedMetaDataFrame>(Id::new("Data")))
+        {
+            self.tree.insert_pane(Pane::new(frame));
+        }
+    }
+
     fn state(&mut self, ctx: &Context, state: &mut State) {
         if state.settings.reset_state {
             *self = Default::default();
@@ -360,6 +334,44 @@ impl App {
             ctx.request_repaint();
         }
     }
+
+    fn drag_and_drop(&mut self, ctx: &Context) {
+        // Preview hovering files
+        if let Some(text) = ctx.input(|input| {
+            (!input.raw.hovered_files.is_empty()).then(|| {
+                let mut text = String::from("Dropping files:");
+                for file in &input.raw.hovered_files {
+                    write!(text, "\n{}", file.display()).ok();
+                }
+                text
+            })
+        }) {
+            let painter =
+                ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("FileDropTarget")));
+            let screen_rect = ctx.content_rect();
+            painter.rect_filled(screen_rect, 0.0, Color32::from_black_alpha(192));
+            painter.text(
+                screen_rect.center(),
+                Align2::CENTER_CENTER,
+                text,
+                TextStyle::Heading.resolve(&ctx.style()),
+                Color32::WHITE,
+            );
+        }
+        // Parse dropped files
+        if let Some(dropped_files) = ctx.input(|input| {
+            (!input.raw.dropped_files.is_empty()).then_some(input.raw.dropped_files.clone())
+        }) {
+            info!(?dropped_files);
+            for dropped_file in dropped_files {
+                let bytes = dropped_file.bytes().unwrap();
+                let frame: MetaDataFrame = ron::de::from_bytes(&bytes).unwrap();
+                let data = HashedDataFrame::new(frame.data).unwrap();
+                self.tree
+                    .insert_pane(Pane::new(MetaDataFrame::new(frame.meta, data)));
+            }
+        }
+    }
 }
 
 impl eframe::App for App {
@@ -371,6 +383,7 @@ impl eframe::App for App {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         let mut state = State::load(ctx, Id::new(ID_SOURCE));
+        self.data(ctx);
         // Pre update
         self.panels(ctx, &mut state);
         self.windows(ctx, &mut state);

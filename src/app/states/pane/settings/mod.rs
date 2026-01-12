@@ -430,28 +430,6 @@ impl Default for Signal {
     }
 }
 
-/// Layout
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub(crate) struct Layout {
-    pub(crate) container_kind: Option<ContainerKind>,
-}
-
-impl Layout {
-    fn new() -> Self {
-        Self {
-            container_kind: None,
-        }
-    }
-}
-
-impl Hash for Layout {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.container_kind
-            .map(|container_kind| container_kind as usize)
-            .hash(state);
-    }
-}
-
 /// Rolling
 #[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
 pub(crate) struct Rolling {
@@ -544,6 +522,7 @@ impl Plot {
         ui.horizontal(|ui| {
             ui.label("BarWidth").on_hover_text("BarWidth.hover");
             DragValue::new(&mut self.width.0)
+                .min_decimals(4)
                 .range(0.0..=f64::MAX)
                 .ui(ui);
         });
@@ -563,6 +542,7 @@ impl Plot {
 pub(crate) struct Threshold {
     pub(crate) factor: OrderedFloat<f64>,
     pub(crate) manual: bool,
+    pub(crate) retention_time: OrderedFloat<f64>,
 
     pub(crate) filter: bool,
     pub(crate) peak_max: bool,
@@ -574,6 +554,7 @@ impl Threshold {
         Self {
             factor: OrderedFloat(0.0),
             manual: false,
+            retention_time: OrderedFloat(0.0),
 
             filter: false,
             peak_max: false,
@@ -584,9 +565,23 @@ impl Threshold {
     fn show(&mut self, ui: &mut Ui) {
         self.factor(ui);
         self.manual(ui);
+        self.retention_time(ui);
+
         self.peak_max(ui);
         self.sort(ui);
         self.filter(ui);
+    }
+
+    /// Retention time
+    fn retention_time(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(ui.localize("RetentionTime"))
+                .on_hover_localized("RetentionTime.hover");
+            DragValue::new(&mut self.retention_time.0)
+                .range(0.0..=f64::MAX)
+                .update_while_editing(false)
+                .ui(ui);
+        });
     }
 
     /// Factor

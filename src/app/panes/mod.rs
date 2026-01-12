@@ -144,9 +144,16 @@ impl Pane {
                 let data_frame = ui.memory_mut(|memory| {
                     memory
                         .caches
-                        .cache::<PlotComputed>()
-                        .get(PlotKey::new(&self.frame.data, &state.settings))
+                        .cache::<TableComputed>()
+                        .get(TableKey::new(&self.frame.data, &state.settings))
                 });
+                let data = ui.memory_mut(|memory| {
+                    memory
+                        .caches
+                        .cache::<PlotComputed>()
+                        .get(PlotKey::new(&data_frame, &state.settings))
+                });
+                PlotView::new(data, &state.settings).show(ui);
             }
             View::Table => {
                 let data_frame = ui.memory_mut(|memory| {

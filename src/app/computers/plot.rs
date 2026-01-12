@@ -91,6 +91,7 @@ fn compute(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
 
 // RETENTION_TIME: Vec<Bar>, stacked, sorted by MASS_TO_CHARGE
 fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
+    println!("data_frame P0: {}", data_frame);
     let meta = data_frame[META].struct_()?;
     let threshold_series = meta.field_by_name(THRESHOLD)?;
     let threshold = threshold_series.bool()?;

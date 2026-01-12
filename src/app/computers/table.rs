@@ -10,7 +10,8 @@ use const_format::formatcp;
 use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
 use polars_ext::expr::ExprExt;
-use std::f64::EPSILON;
+use scirs2::spatial::cosine;
+use std::{f64::EPSILON, iter::zip};
 use tracing::{error, trace};
 // use uom::si::{
 //     f64::Time,
@@ -427,7 +428,7 @@ fn rolling(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     // )
 }
 
-fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+fn threshold(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     println!("lazy_frame TH0: {}", lazy_frame.clone().collect().unwrap());
     // if key.threshold.manual {
     //     let expr = col(MASS_SPECTRUM).list().agg(
@@ -446,22 +447,72 @@ fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     //         lazy_frame.with_column(col(META).struct_().with_fields(vec![expr.alias(THRESHOLD)]));
     //     println!("lazy_frame TH1: {}", lazy_frame.clone().collect().unwrap());
     // }
+    let mut threshold = lit(true);
     let sum = || {
         col(META)
             .struct_()
             .field_by_name(formatcp!("{SIGNAL}.{SUM}"))
     };
-    let mut threshold = lit(true);
     // Peak max
     if key.threshold.peak_max {
         threshold = threshold.and(sum().peak_max());
     }
     threshold = threshold.and(sum().gt(key.threshold.factor.0));
-    lazy_frame.with_column(
+    lazy_frame = lazy_frame.with_column(
         col(META)
             .struct_()
             .with_fields(vec![threshold.alias(THRESHOLD)]),
-    )
+    );
+    if key.threshold.retention_time != 0.0 {
+        // threshold = threshold.and(sum().gt(key.threshold.factor.0));
+        let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
+            .abs()
+            .arg_min();
+        let t = as_struct(vec![
+            col(MASS_SPECTRUM).alias("SOURCE"),
+            col(MASS_SPECTRUM).get(index.clone()).alias("TAGRET"),
+        ])
+        .apply(
+            |column| {
+                let r#struct = column.struct_()?;
+                let source = r#struct.field_by_name("SOURCE")?;
+                let tagret = r#struct.field_by_name("TAGRET")?;
+                // zip(source.list()?, tagret.list()?)
+                //     .map(|(source, tagret)| {
+                //         source?.;
+                //         Some
+                //     })
+                //     .collect();
+                // let builder = ListPrimitiveChunkedBuilder::new(name, capacity, values_capacity, inner_type)
+                for (source, tagret) in zip(source.list()?, tagret.list()?) {
+                    let source = source.ok_or(polars_err!(NoData: "SOURCE"))?;
+                    let r#struct = source.struct_()?;
+                    let mass_to_charge_series = r#struct.field_by_name(MASS_TO_CHARGE)?;
+                    let mass_to_charge = mass_to_charge_series.f64()?;
+                    let signal_series = r#struct.field_by_name(SIGNAL)?;
+                    let signal = signal_series.f64()?;
+                    let tagret = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
+                    let tagret = tagret.f64()?;
+                    println!("source: {:?}", source);
+                    println!("tagret: {:?}", tagret);
+                    // cosine(source, point2);
+                }
+                //
+                Ok(column)
+            },
+            |_, field| Ok(field.clone()),
+        );
+        lazy_frame = lazy_frame.with_columns([index.clone().alias("index"), t.alias("ms")]);
+        println!(
+            "!!!!!!!!!!!!!!!!t: {}",
+            lazy_frame.clone().collect().unwrap()
+        );
+    }
+    lazy_frame
+}
+
+fn cosine_distance(a: Expr, b: Expr) -> Expr {
+    lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
 }
 
 /// Filter and sort threshold
