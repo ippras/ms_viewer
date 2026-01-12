@@ -1,6 +1,7 @@
 pub(crate) use self::{
     about_button::AboutButton,
     edit_button::EditButton,
+    github_button::GithubButton,
     layout_buttons::{GridButton, HorizontalButton, TabsButton, VerticalButton},
     left_panel_button::LeftPanelButton,
     reactive_button::ReactiveButton,
@@ -12,6 +13,7 @@ pub(crate) use self::{
 
 mod about_button;
 mod edit_button;
+mod github_button;
 mod layout_buttons;
 mod left_panel_button;
 mod reactive_button;

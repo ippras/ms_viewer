@@ -4,7 +4,6 @@ use crate::{
 };
 use anyhow::Result;
 use metadata::{Metadata, polars::MetaDataFrame};
-use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display, Formatter},
@@ -18,18 +17,10 @@ pub(crate) struct Data {
 }
 
 impl Data {
-    pub(crate) fn save(&self, path: impl AsRef<Path>, format: Format) -> Result<()> {
+    pub(crate) fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let data_frame = self.frame.data.select([RETENTION_TIME, MASS_SPECTRUM])?;
-        match format {
-            Format::Bin => {
-                // let contents = bincode::serialize(&data_frame)?;
-                // write(path, contents)?;
-            }
-            Format::Ron => {
-                let contents = ron::ser::to_string_pretty(&data_frame, Default::default())?;
-                write(path, contents)?;
-            }
-        }
+        let contents = ron::ser::to_string_pretty(&data_frame, Default::default())?;
+        write(path, contents)?;
         Ok(())
     }
 }
@@ -58,11 +49,4 @@ impl Default for Data {
         //     ])),
         // }
     }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) enum Format {
-    #[default]
-    Bin,
-    Ron,
 }

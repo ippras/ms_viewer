@@ -19,6 +19,7 @@ egui-phosphor = "0.11.0"
 egui_extras = "0.33.3"
 egui_plot = "0.34.0"
 egui_tiles = "0.14.1"
+ehttp = { version = "0.6.0", features = ["json", "native-async"] }
 indexmap = "2.12.1"
 itertools = "0.14.0"
 ordered-float = { version = "5.1.0", features = ["serde"] }
@@ -54,10 +55,12 @@ scirs2-core = "0.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 tracing = "0.1.44"
 uom = { version = "0.37.0", features = ["serde"] }
+url = { version = "2.5.7", features = ["serde"] }
+urlencoding = "2.1.3"
 
 egui_ext = { git = "https://github.com/kgv/egui_ext" }
 egui_l20n = { git = "https://github.com/kgv/egui_l20n", features = ["macros"] }
-metadata = { git = "https://github.com/ippras/metadata", branch = "05f6f2d", features = [
+metadata = { git = "https://github.com/ippras/metadata", branch = "semicolon", features = [
     "egui",
     "polars",
 ] }
@@ -67,11 +70,14 @@ polars_ext = { git = "https://github.com/kgv/polars_ext", branch = "05f6f2d", fe
 
 # native
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+poll-promise = { version = "0.3.0", features = ["tokio"] }
+tokio = { version = "1.49.0", features = ["full"] }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 
 # web
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"
+poll-promise = { version = "0.3.0", features = ["web"] }
 tracing-wasm = "0.2.1"
 wasm-bindgen-futures = "0.4.56"
 web-sys = "0.3.83"

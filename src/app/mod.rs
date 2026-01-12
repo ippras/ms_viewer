@@ -3,41 +3,31 @@ use crate::{
     app::{
         states::State,
         widgets::buttons::{
-            GridButton, HorizontalButton, LeftPanelButton, ReactiveButton, ResetButton,
-            SettingsButton, TabsButton, VerticalButton,
+            GithubButton, GridButton, HorizontalButton, LeftPanelButton, ReactiveButton,
+            ResetButton, SettingsButton, TabsButton, VerticalButton,
         },
     },
     r#const::EM_DASH,
     localization::ContextExt as _,
-    utils::{
-        TreeExt,
-        hash::{HashedDataFrame, HashedMetaDataFrame},
-    },
+    utils::{TreeExt, hash::HashedDataFrame},
 };
-use anyhow::Result;
-use data::{Data, Format};
+use data::Data;
 use eframe::{APP_KEY, CreationContext, Storage, get_value, set_value};
 use egui::{
-    Align, Align2, CentralPanel, CollapsingHeader, Color32, Context, DroppedFile, FontDefinitions,
-    Frame, Id, LayerId, Layout, MenuBar, Order, RichText, ScrollArea, SidePanel, TextStyle,
-    TopBottomPanel, Ui, Widget as _, Window, menu::bar, warn_if_debug_build,
+    Align, Align2, CentralPanel, CollapsingHeader, Color32, Context, FontDefinitions, Frame, Id,
+    LayerId, Layout, MenuBar, Order, RichText, ScrollArea, SidePanel, TextStyle, TopBottomPanel,
+    Ui, Widget as _, Window, warn_if_debug_build,
 };
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
-use egui_l20n::ResponseExt;
 use egui_phosphor::{
     Variant, add_to_fonts,
-    regular::{
-        ARROWS_CLOCKWISE, FLOPPY_DISK, GRID_FOUR, INFO, ROCKET, SIDEBAR_SIMPLE, SLIDERS_HORIZONTAL,
-        SQUARE_SPLIT_HORIZONTAL, SQUARE_SPLIT_VERTICAL, TABLE, TABS, TRASH,
-    },
+    regular::{FLOPPY_DISK, SLIDERS_HORIZONTAL},
 };
-use egui_tiles::{Container, ContainerKind, Tile, TileId, Tree};
+use egui_tiles::{Container, Tile, Tree};
 use metadata::polars::MetaDataFrame;
-use panes::table::TableView;
-use polars::frame::DataFrame;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Write, io::Cursor, str, time::Duration};
-use tracing::{error, info, trace};
+use std::{fmt::Write, str, time::Duration};
+use tracing::info;
 
 /// IEEE 754-2008
 const MAX_PRECISION: usize = 16;
@@ -231,23 +221,7 @@ impl App {
                                         Data {
                                             frame: pane.frame.clone(),
                                         }
-                                        .save("df.msv.ron", Format::Ron)
-                                        .unwrap();
-                                    }
-                                    Tile::Container(container) => {}
-                                }
-                            }
-                        }
-                    }
-                    if ui.button("BIN").clicked() {
-                        for tile_id in self.tree.active_tiles() {
-                            if let Some(tile) = self.tree.tiles.get(tile_id) {
-                                match tile {
-                                    Tile::Pane(pane) => {
-                                        Data {
-                                            frame: pane.frame.clone(),
-                                        }
-                                        .save("df.msv.bin", Format::Ron)
+                                        .save("df.msv.ron")
                                         .unwrap();
                                     }
                                     Tile::Container(container) => {}
@@ -273,6 +247,9 @@ impl App {
                     //     error!(%error);
                     // }
                 }
+                ui.separator();
+                GithubButton::new().size(ICON_SIZE).ui(ui);
+                // Github.ui(ui);
                 ui.separator();
                 // ui.visuals_mut().button_frame = false;
                 // global_dark_light_mode_switch(ui);
