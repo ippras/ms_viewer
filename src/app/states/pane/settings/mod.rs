@@ -540,34 +540,33 @@ impl Plot {
 /// Threshold
 #[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
 pub(crate) struct Threshold {
-    pub(crate) factor: OrderedFloat<f64>,
-    pub(crate) manual: bool,
-    pub(crate) retention_time: OrderedFloat<f64>,
-
-    pub(crate) filter: bool,
     pub(crate) peak_max: bool,
+    pub(crate) retention_time: OrderedFloat<f64>,
+    pub(crate) factor: OrderedFloat<f64>,
+    // pub(crate) manual: bool,
     pub(crate) sort: bool,
+    pub(crate) filter: bool,
 }
 
 impl Threshold {
     fn new() -> Self {
         Self {
-            factor: OrderedFloat(0.0),
-            manual: false,
-            retention_time: OrderedFloat(0.0),
-
-            filter: false,
             peak_max: false,
+            retention_time: OrderedFloat(0.0),
+            factor: OrderedFloat(0.0),
+            // manual: false,
+            filter: false,
             sort: false,
         }
     }
 
     fn show(&mut self, ui: &mut Ui) {
-        self.factor(ui);
-        self.manual(ui);
-        self.retention_time(ui);
-
         self.peak_max(ui);
+        ui.separator();
+        self.retention_time(ui);
+        self.factor(ui);
+        ui.separator();
+        // self.manual(ui);
         self.sort(ui);
         self.filter(ui);
     }
@@ -605,14 +604,14 @@ impl Threshold {
         });
     }
 
-    /// Manual
-    fn manual(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.label("ManualThreshold")
-                .on_hover_text("ManualThreshold.hover");
-            ui.checkbox(&mut self.manual, "");
-        });
-    }
+    // /// Manual
+    // fn manual(&mut self, ui: &mut Ui) {
+    //     ui.horizontal(|ui| {
+    //         ui.label("ManualThreshold")
+    //             .on_hover_text("ManualThreshold.hover");
+    //         ui.checkbox(&mut self.manual, "");
+    //     });
+    // }
 
     /// Peak max
     fn peak_max(&mut self, ui: &mut Ui) {

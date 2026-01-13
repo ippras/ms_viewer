@@ -28,11 +28,9 @@ impl<'a> AboutButton<'a> {
 impl Widget for AboutButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut atoms = RichText::new(INFO);
-        atoms = if let Some(size) = self.size {
-            atoms.size(size)
-        } else {
-            atoms.heading()
-        };
+        if let Some(size) = self.size {
+            atoms = atoms.size(size);
+        }
         ui.toggle_value(self.selected, atoms)
             .on_hover_localized("About")
     }

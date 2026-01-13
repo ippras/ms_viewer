@@ -4,7 +4,7 @@ use crate::{
         ID_SOURCE,
         computers::{
             Computed, Key,
-            peak::{Computed as PeakComputed, Key as PeakKey},
+            filter_and_sort::{Computed as FilterAndSortComputed, Key as FilterAndSortKey},
             plot::{Computed as PlotComputed, Key as PlotKey},
             table::{Computed as TableComputed, Key as TableKey},
         },
@@ -107,6 +107,7 @@ impl Pane {
     }
 
     fn top(&mut self, ui: &mut Ui, state: &mut State) -> Response {
+        let size = TextStyle::Heading.resolve(&ui.style()).size;
         let mut response = ui
             .heading(state.settings.view.icon())
             .on_hover_localized(state.settings.view.text());
@@ -116,15 +117,23 @@ impl Pane {
             .on_hover_ui(|ui| MetadataWidget::new(&self.frame.meta).show(ui))
             .on_hover_cursor(CursorIcon::Grab);
         ui.separator();
-        ResetButton::new(&mut state.events.reset_table_state).ui(ui);
-        ResizeButton::new(&mut state.settings.resizable).ui(ui);
-        EditButton::new(&mut state.settings.edit).ui(ui);
+        ResetButton::new(&mut state.events.reset_table_state)
+            .size(size)
+            .ui(ui);
+        ResizeButton::new(&mut state.settings.resizable)
+            .size(size)
+            .ui(ui);
+        EditButton::new(&mut state.settings.edit).size(size).ui(ui);
         ui.separator();
-        ViewButton::new(&mut state.settings.view).ui(ui);
+        ViewButton::new(&mut state.settings.view).size(size).ui(ui);
         ui.separator();
-        MetadataButton::new(&mut state.windows.open_metadata).ui(ui);
+        MetadataButton::new(&mut state.windows.open_metadata)
+            .size(size)
+            .ui(ui);
         ui.separator();
-        SettingsButton::new(&mut state.windows.open_settings).ui(ui);
+        SettingsButton::new(&mut state.windows.open_settings)
+            .size(size)
+            .ui(ui);
         ui.separator();
         response
     }
@@ -139,8 +148,8 @@ impl Pane {
         let frame = ui.memory_mut(|memory| {
             memory
                 .caches
-                .cache::<PeakComputed>()
-                .get(PeakKey::new(&frame, &state.settings))
+                .cache::<FilterAndSortComputed>()
+                .get(FilterAndSortKey::new(&frame, &state.settings))
         });
         match state.settings.view {
             View::Plot => {

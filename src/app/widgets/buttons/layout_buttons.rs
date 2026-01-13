@@ -28,13 +28,11 @@ impl<'a> VerticalButton<'a> {
 
 impl Widget for VerticalButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let mut text = RichText::new(SQUARE_SPLIT_VERTICAL);
-        text = if let Some(size) = self.size {
-            text.size(size)
-        } else {
-            text.heading()
-        };
-        ui.selectable_value(self.current_value, Some(ContainerKind::Vertical), text)
+        let mut atoms = RichText::new(SQUARE_SPLIT_VERTICAL);
+        if let Some(size) = self.size {
+            atoms = atoms.size(size);
+        }
+        ui.selectable_value(self.current_value, Some(ContainerKind::Vertical), atoms)
             .on_hover_localized("Vertical")
     }
 }

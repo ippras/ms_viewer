@@ -1,6 +1,6 @@
 use crate::{
     app::states::pane::settings::{
-        Rolling, Settings, Sort, Threshold,
+        Rolling, Settings, Threshold,
         mass_spectrum::{MassSpectrum, Sort as MassSpectrumSort},
     },
     r#const::*,
@@ -9,8 +9,7 @@ use crate::{
 use const_format::formatcp;
 use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
-use scirs2::spatial::cosine;
-use std::{f64::EPSILON, iter::zip};
+use std::f64::EPSILON;
 use tracing::{instrument, trace};
 
 const MINUTES: f64 = 60_000.0;
@@ -40,7 +39,6 @@ impl Computer {
         lazy_frame = meta(lazy_frame, key)?;
         lazy_frame = rolling(lazy_frame, key);
         lazy_frame = threshold(lazy_frame, key);
-        lazy_frame = filter_and_sort(lazy_frame, key);
         let data_frame = lazy_frame.collect()?;
         trace!(?data_frame);
         Ok(HashedDataFrame::new(data_frame)?)
@@ -357,33 +355,6 @@ fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     )
 }
 
-/// Filter and sort threshold
-fn filter_and_sort(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
-    if key.threshold.filter {
-        lazy_frame = lazy_frame.filter(col(META).struct_().field_by_name(THRESHOLD));
-    } else if key.threshold.sort {
-        lazy_frame = lazy_frame.sort_by_exprs(
-            [col(META).struct_().field_by_name(THRESHOLD)],
-            SortMultipleOptions::default()
-                .with_maintain_order(true)
-                .with_order_reversed(),
-        );
-    }
-    if key.threshold.manual {
-        lazy_frame = lazy_frame.with_column(
-            col(MASS_SPECTRUM).list().eval(
-                element().filter(
-                    element()
-                        .struct_()
-                        .field_by_name(SIGNAL)
-                        .gt(key.threshold.factor.0),
-                ),
-            ),
-        );
-    }
-    lazy_frame
-}
-
-pub(crate) mod peak;
+pub(crate) mod filter_and_sort;
 pub(crate) mod plot;
 pub(crate) mod table;

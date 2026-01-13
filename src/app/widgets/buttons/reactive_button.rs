@@ -28,11 +28,9 @@ impl<'a> ReactiveButton<'a> {
 impl Widget for ReactiveButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut atoms = RichText::new(ROCKET);
-        atoms = if let Some(size) = self.size {
-            atoms.size(size)
-        } else {
-            atoms.heading()
-        };
+        if let Some(size) = self.size {
+            atoms = atoms.size(size);
+        }
         ui.toggle_value(self.selected, atoms)
             .on_hover_localized("Reactive")
             .on_hover_localized("Reactive.hover?State=enabled")

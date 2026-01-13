@@ -25,11 +25,9 @@ impl<'a> ViewButton<'a> {
 impl Widget for ViewButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut atoms = RichText::new(self.view.icon());
-        atoms = if let Some(size) = self.size {
-            atoms.size(size)
-        } else {
-            atoms.heading()
-        };
+        if let Some(size) = self.size {
+            atoms = atoms.size(size);
+        }
         ui.menu_button(atoms, |ui| {
             ui.selectable_value(self.view, View::Table, View::Table.text())
                 .on_hover_localized(View::Table.hover_text());

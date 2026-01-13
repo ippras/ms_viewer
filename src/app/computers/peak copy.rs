@@ -77,6 +77,10 @@ fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
 }
 
 fn cosine_distance(column: Column) -> PolarsResult<Column> {
+    let mut tagret = df! {
+        MASS_TO_CHARGE => Series::new_empty(PlSmallStr::from_static(MASS_TO_CHARGE), &DataType::Float64),
+        SIGNAL => Series::new_empty(PlSmallStr::from_static(SIGNAL), &DataType::Float64),
+    }?;
     let fields = column.struct_()?.fields_as_series();
     Ok(zip(fields[0].list()?, fields[1].list()?).into_iter().map(|(source, tagret)| {
         let source = {

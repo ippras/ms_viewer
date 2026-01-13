@@ -28,11 +28,9 @@ impl<'a> ResetButton<'a> {
 impl Widget for ResetButton<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut atoms = RichText::new(ARROWS_CLOCKWISE);
-        atoms = if let Some(size) = self.size {
-            atoms.size(size)
-        } else {
-            atoms.heading()
-        };
+        if let Some(size) = self.size {
+            atoms = atoms.size(size);
+        }
         ui.toggle_value(self.selected, atoms)
             .on_hover_localized("Reset")
     }

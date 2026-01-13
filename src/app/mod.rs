@@ -24,7 +24,7 @@ use egui::{
 use egui_ext::{DroppedFileExt, HoveredFileExt, LightDarkButton};
 use egui_phosphor::{
     Variant, add_to_fonts,
-    regular::{FLOPPY_DISK, SLIDERS_HORIZONTAL},
+    regular::{FLOPPY_DISK, INFO, SLIDERS_HORIZONTAL},
 };
 use egui_tiles::{Container, Tile, TileId, Tree};
 use metadata::polars::MetaDataFrame;
@@ -177,8 +177,10 @@ impl App {
                     .size(ICON_SIZE)
                     .ui(ui);
                 ui.separator();
+                GithubButton::new().size(ICON_SIZE).ui(ui);
                 // Save
-                ui.menu_button(FLOPPY_DISK, |ui| {
+                ui.separator();
+                ui.menu_button(RichText::new(FLOPPY_DISK).size(ICON_SIZE), |ui| {
                     if ui.button("RON").clicked() {
                         for tile_id in self.tree.active_tiles() {
                             if let Some(tile) = self.tree.tiles.get(tile_id) {
@@ -196,72 +198,7 @@ impl App {
                         }
                     }
                 });
-                {
-                    // for tile_id in self.tree.active_tiles() {
-                    //     if let Some(root) = self.tree.root() {
-                    //         self.tree.
-                    //         match tile {
-                    //             Tile::Pane(pane) => {
-                    //                 pane.title();
-                    //                 pane.data_frame();
-                    //             }
-                    //             Tile::Container(container) => todo!(),
-                    //         }
-                    //     }
-                    // }
-                    // if let Err(error) = self.data.save("df.utca.ron") {
-                    //     error!(%error);
-                    // }
-                }
                 ui.separator();
-                GithubButton::new().size(ICON_SIZE).ui(ui);
-                // Github.ui(ui);
-                ui.separator();
-                // ui.visuals_mut().button_frame = false;
-                // global_dark_light_mode_switch(ui);
-                // ui.separator();
-                // if ui
-                //     .add(Button::new(RichText::new("🗑")))
-                //     .on_hover_text("Reset data")
-                //     .clicked()
-                // {
-                //     *self = Default::default();
-                // }
-                // // Reset gui
-                // if ui
-                //     .add(Button::new(RichText::new("🔃")))
-                //     .on_hover_text("Reset gui")
-                //     .clicked()
-                // {
-                //     ui.with_visuals(|ui, _| ui.memory_mut(|memory| *memory = Default::default()));
-                // }
-                // // Organize windows
-                // if ui
-                //     .add(Button::new(RichText::new("▣")))
-                //     .on_hover_text("Organize windows")
-                //     .clicked()
-                // {
-                //     ui.ctx().memory_mut(|memory| memory.reset_areas());
-                // }
-                // ui.separator();
-                // let mut central_tab = |tab| {
-                //     let found = self.dock.find_tab(&tab);
-                //     if ui
-                //         .selectable_label(found.is_some(), tab.sign())
-                //         .on_hover_text(tab.to_string())
-                //         .clicked()
-                //     {
-                //         if let Some(index) = found {
-                //             self.dock.remove_tab(index);
-                //         } else {
-                //             self.dock.push_to_focused_leaf(tab);
-                //         }
-                //     }
-                // };
-                // // Table
-                // central_tab(CentralTab::Table);
-                // // Plot
-                // central_tab(CentralTab::Plot);
             });
         });
     }
@@ -289,11 +226,11 @@ impl App {
         self.settings_window(ctx, state);
     }
 
-    // fn about_window(&mut self, ctx: &Context, state: &mut State) {
-    //     Window::new(format!("{INFO} About"))
-    //         .open(&mut state.windows.open_about)
-    //         .show(ctx, |ui| About.ui(ui));
-    // }
+    fn about_window(&mut self, ctx: &Context, state: &mut State) {
+        Window::new(format!("{INFO} About"))
+            .open(&mut state.windows.open_about)
+            .show(ctx, |ui| About.ui(ui));
+    }
 
     fn settings_window(&mut self, ctx: &Context, state: &mut State) {
         Window::new(format!("{SLIDERS_HORIZONTAL} Settings"))
