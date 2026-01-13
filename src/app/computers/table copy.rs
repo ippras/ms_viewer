@@ -9,9 +9,14 @@ use crate::{
 use const_format::formatcp;
 use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
+use polars_ext::expr::ExprExt;
 use scirs2::spatial::cosine;
 use std::{f64::EPSILON, iter::zip};
-use tracing::{instrument, trace};
+use tracing::{error, trace};
+// use uom::si::{
+//     f64::Time,
+//     time::{millisecond, minute, second},
+// };
 
 const MINUTES: f64 = 60_000.0;
 
@@ -22,9 +27,9 @@ pub(crate) type Computed = FrameCache<Value, Computer>;
 #[derive(Default)]
 pub(crate) struct Computer;
 
-impl Computer {
-    #[instrument(skip(self), err)]
-    fn try_compute(&mut self, key: Key) -> PolarsResult<Value> {
+impl ComputerMut<Key<'_>, Value> for Computer {
+    fn compute(&mut self, key: Key<'_>) -> Value {
+        error!(?key.frame.data_frame);
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
         // Filter nulls
         if key.filter_null {
@@ -36,43 +41,76 @@ impl Computer {
             col(SIGNAL).cast(DataType::Float64),
             col(MASS_TO_CHARGE).cast(DataType::Float64),
         ]);
-        lazy_frame = retention_time(lazy_frame, key);
-        lazy_frame = meta(lazy_frame, key)?;
-        lazy_frame = rolling(lazy_frame, key);
-        lazy_frame = threshold(lazy_frame, key);
-        lazy_frame = filter_and_sort(lazy_frame, key);
-        let data_frame = lazy_frame.collect()?;
-        trace!(?data_frame);
-        Ok(HashedDataFrame::new(data_frame)?)
-    }
-}
+        // let mut signal = col(SIGNAL).cast(DataType::Float64);
+        // if key.normalize_signal {
+        //     signal = signal / max(SIGNAL)
+        // }
+        // lazy_frame = lazy_frame.with_column(signal.precision(key.precision, key.significant));
+        // // Mass to charge
+        // lazy_frame =
+        //     lazy_frame.with_column(col(MASS_TO_CHARGE).precision(key.precision, key.significant));
 
-impl ComputerMut<Key<'_>, Value> for Computer {
-    fn compute(&mut self, key: Key) -> Value {
-        self.try_compute(key).unwrap()
+        // Compute
+        println!("lazy_frame T0: {}", lazy_frame.clone().collect().unwrap());
+        lazy_frame = compute(lazy_frame, key);
+        println!("lazy_frame T1: {}", lazy_frame.clone().collect().unwrap());
+        lazy_frame = meta(lazy_frame, key).unwrap();
+        println!("lazy_frame T2: {}", lazy_frame.clone().collect().unwrap());
+        lazy_frame = rolling(lazy_frame, key);
+        println!("lazy_frame T3: {}", lazy_frame.clone().collect().unwrap());
+        lazy_frame = threshold(lazy_frame, key);
+        // println!("lazy_frame T4: {}", lazy_frame.clone().collect().unwrap());
+        lazy_frame = filter_and_sort(lazy_frame, key);
+        // println!("lazy_frame T5: {}", lazy_frame.clone().collect().unwrap());
+        // Format
+        lazy_frame = format(lazy_frame, key);
+        // lazy_frame = lazy_frame.with_column(col(MASS_SPECTRUM).list().eval(
+        //     element().struct_().with_fields(vec![
+        //         element()
+        //             .struct_()
+        //             .field_by_name(MASS_TO_CHARGE)
+        //             .precision(key.precision, key.significant),
+        //         element()
+        //             .struct_()
+        //             .field_by_name(SIGNAL)
+        //             .precision(key.precision, key.significant),
+        //     ]),
+        // ));
+        // println!("lazy_frame T6: {}", lazy_frame.clone().collect().unwrap());
+        let data_frame = lazy_frame.collect().unwrap();
+        trace!(?data_frame);
+        HashedDataFrame::new(data_frame).unwrap()
     }
 }
 
 /// Table key
 #[derive(Clone, Copy, Hash, Debug)]
 pub struct Key<'a> {
-    // pub(crate) sort: Sort,
     pub(crate) frame: &'a HashedDataFrame,
+    pub(crate) percent: bool,
+    pub(crate) precision: usize,
+    pub(crate) significant: bool,
+    pub(crate) explode: bool,
     pub(crate) filter_null: bool,
-    pub(crate) mass_spectrum: MassSpectrum,
     pub(crate) normalize_signal: bool,
+    pub(crate) sort: Sort,
     pub(crate) rolling: Rolling,
+    pub(crate) mass_spectrum: MassSpectrum,
     pub(crate) threshold: Threshold,
 }
 
 impl<'a> Key<'a> {
     pub(crate) fn new(frame: &'a HashedDataFrame, settings: &Settings) -> Self {
         Self {
-            // sort: settings.sort,
             frame,
+            percent: settings.percent,
+            precision: settings.precision,
+            significant: settings.significant,
+            explode: settings.explode,
             filter_null: settings.filter_null,
-            mass_spectrum: settings.mass_spectrum,
             normalize_signal: settings.signal.normalize,
+            sort: settings.sort,
+            mass_spectrum: settings.mass_spectrum,
             rolling: settings.rolling,
             threshold: settings.threshold,
         }
@@ -81,6 +119,58 @@ impl<'a> Key<'a> {
 
 /// Table value
 type Value = HashedDataFrame;
+
+fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+    match key.sort {
+        Sort::RetentionTime => retention_time(lazy_frame, key),
+        Sort::MassToCharge => mass_to_charge(lazy_frame, key),
+    }
+}
+
+fn mass_to_charge(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+    trace!(lazy_data_frame =? lazy_frame.clone().collect());
+    lazy_frame = lazy_frame
+        .sort([RETENTION_TIME], Default::default())
+        .group_by([col(MASS_TO_CHARGE).round(2, RoundMode::HalfToEven)])
+        .agg([as_struct(vec![col(RETENTION_TIME), col(SIGNAL)]).alias(EIC)]);
+    if !key.explode {
+        lazy_frame = lazy_frame.with_columns([
+            col(EIC).list().len().name().suffix(".Count"),
+            col(EIC)
+                .list()
+                .eval(element().struct_().field_by_name(RETENTION_TIME))
+                .list()
+                .min()
+                .alias(formatcp!("{RETENTION_TIME}.{MIN}")),
+            col(EIC)
+                .list()
+                .eval(element().struct_().field_by_name(RETENTION_TIME))
+                .list()
+                .max()
+                .alias(formatcp!("{RETENTION_TIME}.{MAX}")),
+            col(EIC)
+                .list()
+                .eval(element().struct_().field_by_name(SIGNAL))
+                .list()
+                .min()
+                .alias(formatcp!("{SIGNAL}.{MIN}")),
+            col(EIC)
+                .list()
+                .eval(element().struct_().field_by_name(SIGNAL))
+                .list()
+                .max()
+                .alias(formatcp!("{SIGNAL}.{MAX}")),
+            col(EIC)
+                .list()
+                .eval(element().struct_().field_by_name(SIGNAL))
+                .list()
+                .sum()
+                .alias(formatcp!("{SIGNAL}.{SUM}")),
+        ]);
+    }
+    lazy_frame = lazy_frame.sort([MASS_TO_CHARGE], Default::default());
+    lazy_frame
+}
 
 fn retention_time(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     // Normalize signal
@@ -339,23 +429,94 @@ fn rolling(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
 }
 
 fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
-    let sum = || {
-        col(META)
-            .struct_()
-            .field_by_name(formatcp!("{SIGNAL}.{SUM}"))
-    };
-    // Peak max
+    println!("lazy_frame TH0: {}", lazy_frame.clone().collect().unwrap());
+    // if key.threshold.manual {
+    //     let expr = col(MASS_SPECTRUM).list().agg(
+    //         // element()
+    //         //     .struct_()
+    //         //     .field_by_name(MASS_TO_CHARGE)
+    //         //     .eq(28.1)
+    //         //     .and(element().struct_().field_by_name(SIGNAL).eq(1.0))
+    //         //     .any(true),
+    //         (element().struct_().field_by_name(MASS_TO_CHARGE) - lit(28))
+    //             .abs()
+    //             .lt(0.5)
+    //             .any(true),
+    //     );
+    //     lazy_frame =
+    //         lazy_frame.with_column(col(META).struct_().with_fields(vec![expr.alias(THRESHOLD)]));
+    //     println!("lazy_frame TH1: {}", lazy_frame.clone().collect().unwrap());
+    // }
     let mut threshold = lit(true);
-    if key.threshold.peak_max {
-        threshold = threshold.and(sum().peak_max());
+    if key.threshold.retention_time == 0.0 {
+        let sum = || {
+            col(META)
+                .struct_()
+                .field_by_name(formatcp!("{SIGNAL}.{SUM}"))
+        };
+        // Peak max
+        if key.threshold.peak_max {
+            threshold = threshold.and(sum().peak_max());
+        }
+        threshold = threshold.and(sum().gt(key.threshold.factor.0));
+    } else {
+        let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
+            .abs()
+            .arg_min();
+        let expr = as_struct(vec![
+            col(MASS_SPECTRUM).alias("SOURCE"),
+            col(MASS_SPECTRUM).get(index.clone()).alias("TAGRET"),
+        ])
+        .apply(cosine_distance, |_, _field| {
+            Ok(Field::new(PlSmallStr::EMPTY, DataType::Float64))
+        })
+        .lt(key.threshold.factor.0);
+        threshold = threshold.and(expr);
     }
-    threshold = threshold.and(sum().gt(key.threshold.factor.0));
     lazy_frame.with_column(
         col(META)
             .struct_()
             .with_fields(vec![threshold.alias(THRESHOLD)]),
     )
 }
+
+fn cosine_distance(column: Column) -> PolarsResult<Column> {
+    let fields = column.struct_()?.fields_as_series();
+    Ok(zip(fields[0].list()?, fields[1].list()?).into_iter().map(|(source, tagret)| {
+        let source = {
+            let series = source.ok_or(polars_err!(NoData: "SOURCE"))?;
+            let r#struct = series.struct_()?;
+            df! {
+                MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+                SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+            }?
+        };
+        let tagret = {
+            let series = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
+            let r#struct = series.struct_()?;
+            df! {
+                MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+                SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+            }?
+        };
+        let join = source.join(
+            &tagret,
+            [MASS_TO_CHARGE],
+            [MASS_TO_CHARGE],
+            JoinArgs::new(JoinType::Full).with_coalesce(JoinCoalesce::CoalesceColumns),
+            None,
+        )?;
+        let a = join[SIGNAL].f64()?.fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+        let b = join[formatcp!("{SIGNAL}_right")]
+            .f64()?
+            .fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+        Ok(Some(cosine(&a, &b)))
+    }).collect::<PolarsResult<Float64Chunked>>()?.into_column())
+}
+
+// fn cosine_distance(a: Expr, b: Expr) -> Expr {
+//     lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
+// }
 
 /// Filter and sort threshold
 fn filter_and_sort(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
@@ -384,6 +545,80 @@ fn filter_and_sort(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     lazy_frame
 }
 
-pub(crate) mod peak;
-pub(crate) mod plot;
-pub(crate) mod table;
+/// Format
+fn format(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+    lazy_frame.with_columns([
+        // Retention time
+        col(RETENTION_TIME)
+            .cast(DataType::Duration(TimeUnit::Milliseconds))
+            .to_physical()
+            / lit(MINUTES),
+        // Mass spectrum
+        col(MASS_SPECTRUM)
+            .list()
+            .eval(element().struct_().with_fields(vec![
+                    element()
+                        .struct_()
+                        .field_by_name(MASS_TO_CHARGE)
+                        .precision(key.precision, key.significant),
+                    element()
+                        .struct_()
+                        .field_by_name(SIGNAL)
+                        .precision(key.precision, key.significant),
+                ])),
+        // Meta
+        col(META).struct_().with_fields(vec![
+            col(META)
+                .struct_()
+                .field_by_names([
+                    formatcp!(r#"^{MASS_TO_CHARGE}.*$"#),
+                    formatcp!(r#"^{SIGNAL}.*$"#),
+                    formatcp!(r#"^{ROLLING}.*$"#),
+                ])
+                .precision(key.precision, key.significant),
+        ]),
+    ])
+}
+
+// df.with_columns([
+//     (pl.col("x") * pl.col("y")).rolling_mean(window_size).alias("xy_mean"),
+//     pl.col("x").rolling_mean(window_size).alias("x_mean"),
+//     pl.col("y").rolling_mean(window_size).alias("y_mean"),
+//     pl.col("x").rolling_std(window_size).alias("x_std"),
+//     pl.col("y").rolling_std(window_size).alias("y_std"),
+// ]).with_columns(
+//     (pl.col("xy_mean") - pl.col("x_mean") * pl.col("y_mean")).alias("cov_xy")
+// ).with_columns(
+//     (pl.col("cov_xy") / (pl.col("x_std") * pl.col("y_std"))).alias("correlation")
+// ).with_columns(
+//     (pl.col("correlation") * (pl.col("y_std") / pl.col("x_std"))).alias("slope"),
+// ).with_columns(
+//     (pl.col("y_mean") - pl.col("slope") * pl.col("x_mean")).alias("intercept"),
+// )
+
+// pub fn retention_time(units: TimeUnits) -> impl Fn(&Series) -> PolarsResult<Series> {
+//     move |series| {
+//         Ok(series
+//             .cast(&DataType::Float64)?
+//             .f64()?
+//             .iter()
+//             .map(|value| {
+//                 let time = Time::new::<millisecond>(value?);
+//                 Some(match units {
+//                     TimeUnits::Millisecond => time.get::<millisecond>(),
+//                     TimeUnits::Second => time.get::<second>(),
+//                     TimeUnits::Minute => time.get::<minute>(),
+//                 })
+//             })
+//             .collect::<Float64Chunked>()
+//             .into_series())
+//     }
+// }
+
+// fn retention_time(retention_time: RetentionTime) -> Expr {
+//     // element().struct_().field_by_name(SIGNAL)
+// }
+
+// fn signal() -> Expr {
+//     element().struct_().field_by_name(SIGNAL)
+// }

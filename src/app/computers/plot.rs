@@ -1,13 +1,15 @@
 use crate::{
-    app::states::pane::settings::{
-        Plot, Settings, Sort, Threshold, mass_spectrum::Sort as MassSpectrumSort,
+    app::{
+        computers::MINUTES,
+        states::pane::settings::{
+            Plot, Settings, Sort, Threshold, mass_spectrum::Sort as MassSpectrumSort,
+        },
     },
     r#const::*,
     utils::hash::HashedDataFrame,
 };
 use const_format::formatcp;
 use egui::{
-    Color32,
     emath::{Float, OrderedFloat},
     util::cache::{ComputerMut, FrameCache},
 };
@@ -16,10 +18,6 @@ use egui_plot::Bar;
 use indexmap::IndexMap;
 use polars::prelude::*;
 use std::{collections::HashMap, iter::zip};
-// use uom::si::{
-//     f64::Time,
-//     time::{millisecond, minute, second},
-// };
 
 /// Plot computed
 pub(crate) type Computed = FrameCache<Value, Computer>;
@@ -32,9 +30,13 @@ impl Computer {
     fn try_compute(&mut self, key: Key<'_>) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
         println!("lazy_frame P0: {}", lazy_frame.clone().collect().unwrap());
-        // Compute
+        // Convert
+        lazy_frame = lazy_frame.with_columns([col(RETENTION_TIME)
+            .cast(DataType::Duration(TimeUnit::Milliseconds))
+            .to_physical()
+            / lit(MINUTES)]);
         let data_frame = lazy_frame.collect()?;
-        // println!("data_frame: {:?}", data_frame.schema());
+        // Compute
         let value = compute(&data_frame, key)?;
         Ok(value)
     }

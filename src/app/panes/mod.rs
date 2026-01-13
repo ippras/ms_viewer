@@ -3,11 +3,15 @@ use crate::{
     app::{
         ID_SOURCE,
         computers::{
+            Computed, Key,
+            peak::{Computed as PeakComputed, Key as PeakKey},
             plot::{Computed as PlotComputed, Key as PlotKey},
             table::{Computed as TableComputed, Key as TableKey},
         },
         states::pane::{State, settings::View},
-        widgets::buttons::{EditButton, ResetButton, ResizeButton, SettingsButton, ViewButton},
+        widgets::buttons::{
+            EditButton, MetadataButton, ResetButton, ResizeButton, SettingsButton, ViewButton,
+        },
     },
     utils::hash::HashedMetaDataFrame,
 };
@@ -115,7 +119,10 @@ impl Pane {
         ResetButton::new(&mut state.events.reset_table_state).ui(ui);
         ResizeButton::new(&mut state.settings.resizable).ui(ui);
         EditButton::new(&mut state.settings.edit).ui(ui);
+        ui.separator();
         ViewButton::new(&mut state.settings.view).ui(ui);
+        ui.separator();
+        MetadataButton::new(&mut state.windows.open_metadata).ui(ui);
         ui.separator();
         SettingsButton::new(&mut state.windows.open_settings).ui(ui);
         ui.separator();
@@ -123,35 +130,25 @@ impl Pane {
     }
 
     fn central(&mut self, ui: &mut Ui, state: &mut State) {
-        if state.settings.edit {
-            self.meta(ui);
-        }
-        self.data(ui, state);
-    }
-
-    fn meta(&mut self, ui: &mut Ui) {
-        ui.style_mut().visuals.collapsing_header_frame = true;
-        ui.collapsing(RichText::new(format!("{TAG} Metadata")).heading(), |ui| {
-            MetadataWidget::new(&mut self.frame.meta)
-                .with_writable(true)
-                .show(ui);
+        let frame = ui.memory_mut(|memory| {
+            memory
+                .caches
+                .cache::<Computed>()
+                .get(Key::new(&self.frame.data, &state.settings))
         });
-    }
-
-    fn data(&mut self, ui: &mut Ui, state: &mut State) {
+        let frame = ui.memory_mut(|memory| {
+            memory
+                .caches
+                .cache::<PeakComputed>()
+                .get(PeakKey::new(&frame, &state.settings))
+        });
         match state.settings.view {
             View::Plot => {
-                let data_frame = ui.memory_mut(|memory| {
-                    memory
-                        .caches
-                        .cache::<TableComputed>()
-                        .get(TableKey::new(&self.frame.data, &state.settings))
-                });
                 let data = ui.memory_mut(|memory| {
                     memory
                         .caches
                         .cache::<PlotComputed>()
-                        .get(PlotKey::new(&data_frame, &state.settings))
+                        .get(PlotKey::new(&frame, &state.settings))
                 });
                 PlotView::new(data, &state.settings).show(ui);
             }
@@ -160,7 +157,7 @@ impl Pane {
                     memory
                         .caches
                         .cache::<TableComputed>()
-                        .get(TableKey::new(&self.frame.data, &state.settings))
+                        .get(TableKey::new(&frame, &state.settings))
                 });
                 TableView::new(&data_frame, state).show(ui);
             }
@@ -171,10 +168,25 @@ impl Pane {
 impl Pane {
     fn windows(&mut self, ui: &mut Ui, state: &mut State) {
         self.settings_window(ui, state);
+        self.metadata_window(ui, state);
+    }
+
+    fn metadata_window(&mut self, ui: &mut Ui, state: &mut State) {
+        Window::new(format!("{TAG} Metadata"))
+            .id(ui.auto_id_with(ID_SOURCE).with("Metadata"))
+            .default_pos(ui.next_widget_position())
+            .open(&mut state.windows.open_metadata)
+            .show(ui.ctx(), |ui| {
+                let mut metadata = MetadataWidget::new(&mut self.frame.meta);
+                if state.settings.edit {
+                    metadata = metadata.with_writable(true)
+                }
+                metadata.show(ui);
+            });
     }
 
     fn settings_window(&mut self, ui: &mut Ui, state: &mut State) {
-        Window::new(format!("{SLIDERS_HORIZONTAL} Configuration settings"))
+        Window::new(format!("{SLIDERS_HORIZONTAL} Settings"))
             .id(ui.auto_id_with(ID_SOURCE).with("Settings"))
             .default_pos(ui.next_widget_position())
             .open(&mut state.windows.open_settings)

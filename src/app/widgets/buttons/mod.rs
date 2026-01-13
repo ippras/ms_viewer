@@ -4,6 +4,7 @@ pub(crate) use self::{
     github_button::GithubButton,
     layout_buttons::{GridButton, HorizontalButton, TabsButton, VerticalButton},
     left_panel_button::LeftPanelButton,
+    metadata_button::MetadataButton,
     reactive_button::ReactiveButton,
     reset_button::ResetButton,
     resize_button::ResizeButton,
@@ -16,6 +17,7 @@ mod edit_button;
 mod github_button;
 mod layout_buttons;
 mod left_panel_button;
+mod metadata_button;
 mod reactive_button;
 mod reset_button;
 mod resize_button;
