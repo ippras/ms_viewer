@@ -33,6 +33,7 @@ polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-f
     "fmt_no_tty",
     "lazy",
     "list_eval",
+    "list_to_struct",
     "peaks",
     "rolling_window",
     "round_series",

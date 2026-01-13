@@ -428,7 +428,7 @@ fn rolling(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     // )
 }
 
-fn threshold(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     println!("lazy_frame TH0: {}", lazy_frame.clone().collect().unwrap());
     // if key.threshold.manual {
     //     let expr = col(MASS_SPECTRUM).list().agg(
@@ -448,75 +448,75 @@ fn threshold(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     //     println!("lazy_frame TH1: {}", lazy_frame.clone().collect().unwrap());
     // }
     let mut threshold = lit(true);
-    let sum = || {
-        col(META)
-            .struct_()
-            .field_by_name(formatcp!("{SIGNAL}.{SUM}"))
-    };
-    // Peak max
-    if key.threshold.peak_max {
-        threshold = threshold.and(sum().peak_max());
-    }
-    threshold = threshold.and(sum().gt(key.threshold.factor.0));
-    lazy_frame = lazy_frame.with_column(
-        col(META)
-            .struct_()
-            .with_fields(vec![threshold.alias(THRESHOLD)]),
-    );
-    if key.threshold.retention_time != 0.0 {
-        // threshold = threshold.and(sum().gt(key.threshold.factor.0));
+    if key.threshold.retention_time == 0.0 {
+        let sum = || {
+            col(META)
+                .struct_()
+                .field_by_name(formatcp!("{SIGNAL}.{SUM}"))
+        };
+        // Peak max
+        if key.threshold.peak_max {
+            threshold = threshold.and(sum().peak_max());
+        }
+        threshold = threshold.and(sum().gt(key.threshold.factor.0));
+    } else {
         let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
             .abs()
             .arg_min();
-        let t = as_struct(vec![
+        let expr = as_struct(vec![
             col(MASS_SPECTRUM).alias("SOURCE"),
             col(MASS_SPECTRUM).get(index.clone()).alias("TAGRET"),
         ])
-        .apply(
-            |column| {
-                let r#struct = column.struct_()?;
-                let source = r#struct.field_by_name("SOURCE")?;
-                let tagret = r#struct.field_by_name("TAGRET")?;
-                // zip(source.list()?, tagret.list()?)
-                //     .map(|(source, tagret)| {
-                //         source?.;
-                //         Some
-                //     })
-                //     .collect();
-                // let builder = ListPrimitiveChunkedBuilder::new(name, capacity, values_capacity, inner_type)
-                for (source, tagret) in zip(source.list()?, tagret.list()?) {
-                    let source = source.ok_or(polars_err!(NoData: "SOURCE"))?;
-                    let r#struct = source.struct_()?;
-                    for (mass_to_charge, signal) in zip(
-                        r#struct.field_by_name(MASS_TO_CHARGE)?.f64()?,
-                        r#struct.field_by_name(SIGNAL)?.f64()?,
-                    ) {
-                        //
-                    }
-                    let signal = signal_series.f64()?;
-                    let tagret = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
-                    let tagret = tagret.f64()?;
-                    println!("source: {:?}", source);
-                    println!("tagret: {:?}", tagret);
-                    // cosine(source, point2);
-                }
-                //
-                Ok(column)
-            },
-            |_, field| Ok(field.clone()),
-        );
-        lazy_frame = lazy_frame.with_columns([index.clone().alias("index"), t.alias("ms")]);
-        println!(
-            "!!!!!!!!!!!!!!!!t: {}",
-            lazy_frame.clone().collect().unwrap()
-        );
+        .apply(cosine_distance, |_, _field| {
+            Ok(Field::new(PlSmallStr::EMPTY, DataType::Float64))
+        })
+        .lt(key.threshold.factor.0);
+        threshold = threshold.and(expr);
     }
-    lazy_frame
+    lazy_frame.with_column(
+        col(META)
+            .struct_()
+            .with_fields(vec![threshold.alias(THRESHOLD)]),
+    )
 }
 
-fn cosine_distance(a: Expr, b: Expr) -> Expr {
-    lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
+fn cosine_distance(column: Column) -> PolarsResult<Column> {
+    let fields = column.struct_()?.fields_as_series();
+    Ok(zip(fields[0].list()?, fields[1].list()?).into_iter().map(|(source, tagret)| {
+        let source = {
+            let series = source.ok_or(polars_err!(NoData: "SOURCE"))?;
+            let r#struct = series.struct_()?;
+            df! {
+                MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+                SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+            }?
+        };
+        let tagret = {
+            let series = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
+            let r#struct = series.struct_()?;
+            df! {
+                MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+                SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+            }?
+        };
+        let join = source.join(
+            &tagret,
+            [MASS_TO_CHARGE],
+            [MASS_TO_CHARGE],
+            JoinArgs::new(JoinType::Full).with_coalesce(JoinCoalesce::CoalesceColumns),
+            None,
+        )?;
+        let a = join[SIGNAL].f64()?.fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+        let b = join[formatcp!("{SIGNAL}_right")]
+            .f64()?
+            .fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+        Ok(Some(cosine(&a, &b)))
+    }).collect::<PolarsResult<Float64Chunked>>()?.into_column())
 }
+
+// fn cosine_distance(a: Expr, b: Expr) -> Expr {
+//     lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
+// }
 
 /// Filter and sort threshold
 fn filter_and_sort(mut lazy_frame: LazyFrame, key: Key) -> LazyFrame {

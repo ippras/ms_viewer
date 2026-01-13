@@ -590,7 +590,7 @@ impl Threshold {
             ui.label(ui.localize("FactorThreshold"))
                 .on_hover_localized("FactorThreshold.hover");
             DragValue::new(&mut self.factor.0)
-                .range(0.0..=f64::MAX)
+                .range(0.0..=1.0)
                 .update_while_editing(false)
                 .ui(ui);
         });
