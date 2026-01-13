@@ -299,7 +299,7 @@ impl PlotView<'_> {
             // }
             plot = plot.legend(legend);
         }
-        plot.show(ui, |ui| {
+        let plot_response = plot.show(ui, |ui| {
             let range_x = ui.plot_bounds().range_x();
             // let width = ui.plot_bounds().width();
             // tracing::error!(?width);
@@ -358,6 +358,12 @@ impl PlotView<'_> {
             }
             if !value.rolling_median.is_empty() {
                 ui.line(Line::new("RollingMedian", value.rolling_median));
+            }
+        });
+        plot_response.response.context_menu(|ui| {
+            if ui.button("RetentionTime").clicked() {
+                let id = plot_response.hovered_plot_item;
+                println!("RetentionTime: ");
             }
         });
     }

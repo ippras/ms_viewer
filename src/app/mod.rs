@@ -3,8 +3,8 @@ use crate::{
     app::{
         states::State,
         widgets::buttons::{
-            GithubButton, GridButton, HorizontalButton, LeftPanelButton, ReactiveButton,
-            ResetButton, SettingsButton, TabsButton, VerticalButton,
+            AboutButton, GithubButton, GridButton, HorizontalButton, LeftPanelButton,
+            ReactiveButton, ResetButton, SettingsButton, TabsButton, VerticalButton,
         },
     },
     r#const::EM_DASH,
@@ -199,6 +199,10 @@ impl App {
                     }
                 });
                 ui.separator();
+                AboutButton::new(&mut state.windows.open_about)
+                    .size(ICON_SIZE)
+                    .ui(ui);
+                ui.separator();
             });
         });
     }
@@ -222,14 +226,16 @@ impl App {
 // Windows
 impl App {
     fn windows(&mut self, ctx: &Context, state: &mut State) {
-        // self.about_window(ctx, state);
+        self.about_window(ctx, state);
         self.settings_window(ctx, state);
     }
 
     fn about_window(&mut self, ctx: &Context, state: &mut State) {
         Window::new(format!("{INFO} About"))
             .open(&mut state.windows.open_about)
-            .show(ctx, |ui| About.ui(ui));
+            .show(ctx, |ui| {
+                // About.show(ui)
+            });
     }
 
     fn settings_window(&mut self, ctx: &Context, state: &mut State) {

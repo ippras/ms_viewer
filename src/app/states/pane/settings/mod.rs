@@ -196,7 +196,7 @@ impl Settings {
     fn explode(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Explode");
-            ui.checkbox(&mut self.explode, "")
+            ui.checkbox(&mut self.explode, ())
                 .on_hover_text("Explode lists");
         });
     }
@@ -205,7 +205,7 @@ impl Settings {
     fn filter(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Filter empty/null");
-            ui.checkbox(&mut self.filter_null, "")
+            ui.checkbox(&mut self.filter_null, ())
                 .on_hover_text("Filter empty/null retention time");
         });
     }
@@ -505,7 +505,7 @@ impl Plot {
     fn fill(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Fill").on_hover_text("Fill.hover");
-            ui.checkbox(&mut self.fill, "");
+            ui.checkbox(&mut self.fill, ());
         });
     }
 
@@ -513,7 +513,7 @@ impl Plot {
     fn legend(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Legend").on_hover_text("Show plot legend");
-            ui.checkbox(&mut self.legend, "");
+            ui.checkbox(&mut self.legend, ());
         });
     }
 
@@ -522,8 +522,9 @@ impl Plot {
         ui.horizontal(|ui| {
             ui.label("BarWidth").on_hover_text("BarWidth.hover");
             DragValue::new(&mut self.width.0)
-                .min_decimals(4)
+                .custom_formatter(|n, _range| n.to_string())
                 .range(0.0..=f64::MAX)
+                .speed(0.001)
                 .ui(ui);
         });
     }
@@ -532,7 +533,7 @@ impl Plot {
     fn stack(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Stack").on_hover_text("Stack.hover");
-            ui.checkbox(&mut self.stack, "");
+            ui.checkbox(&mut self.stack, ());
         });
     }
 }
@@ -574,9 +575,10 @@ impl Threshold {
     /// Retention time
     fn retention_time(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(ui.localize("RetentionTime"))
-                .on_hover_localized("RetentionTime.hover");
+            ui.label(ui.localize("Threshold_RetentionTime"))
+                .on_hover_localized("Threshold_RetentionTime.hover");
             DragValue::new(&mut self.retention_time.0)
+                .custom_formatter(|n, _range| n.to_string())
                 .range(0.0..=f64::MAX)
                 .update_while_editing(false)
                 .ui(ui);
@@ -586,10 +588,11 @@ impl Threshold {
     /// Factor
     fn factor(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(ui.localize("FactorThreshold"))
-                .on_hover_localized("FactorThreshold.hover");
+            ui.label(ui.localize("Threshold_Factor"))
+                .on_hover_localized("Threshold_Factor.hover");
             DragValue::new(&mut self.factor.0)
                 .range(0.0..=1.0)
+                .speed(0.01)
                 .update_while_editing(false)
                 .ui(ui);
         });
@@ -598,8 +601,8 @@ impl Threshold {
     /// Filter
     fn filter(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(ui.localize("FilterThreshold"))
-                .on_hover_localized("FilterThreshold.hover");
+            ui.label(ui.localize("Threshold_Filter"))
+                .on_hover_localized("Threshold_Filter.hover");
             ui.checkbox(&mut self.filter, ());
         });
     }
@@ -607,9 +610,9 @@ impl Threshold {
     // /// Manual
     // fn manual(&mut self, ui: &mut Ui) {
     //     ui.horizontal(|ui| {
-    //         ui.label("ManualThreshold")
-    //             .on_hover_text("ManualThreshold.hover");
-    //         ui.checkbox(&mut self.manual, "");
+    //         ui.label("Threshold_Manual")
+    //             .on_hover_text("Threshold_Manual.hover");
+    //         ui.checkbox(&mut self.manual, ());
     //     });
     // }
 
@@ -617,7 +620,7 @@ impl Threshold {
     fn peak_max(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("PeakMax");
-            ui.checkbox(&mut self.peak_max, "");
+            ui.checkbox(&mut self.peak_max, ());
         });
     }
 
@@ -625,8 +628,8 @@ impl Threshold {
     fn sort(&mut self, ui: &mut Ui) {
         ui.add_enabled_ui(!self.filter, |ui| {
             ui.horizontal(|ui| {
-                ui.label(ui.localize("SortThresholded"))
-                    .on_hover_localized("SortThresholded.hover");
+                ui.label(ui.localize("Threshold_Sort"))
+                    .on_hover_localized("Threshold_Sort.hover");
                 ui.checkbox(&mut self.sort, ());
             });
         });

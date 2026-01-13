@@ -1,11 +1,13 @@
-FilterThreshold = Filter threshold
 MassSpectrum = Mass spectrum
 Plot = Plot
 Rolling = Rolling
-SortThresholded = Sort threshold
 Table = Table
 Threshold = Threshold
-FactorThreshold = Factor threshold
+Threshold_Factor = Factor
+Threshold_Filter = Filter
+Threshold_RetentionTime = Retention time
+Threshold_Sort = Sort
+#Threshold_Manual = Manual
 
 # Hover
 
