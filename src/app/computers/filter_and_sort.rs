@@ -85,17 +85,39 @@ fn compute(lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
             [(col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES)).abs()],
             SortMultipleOptions::new(),
         )
-        .with_column(col(MASS_SPECTRUM).list().eval(
-            mass_to_charge(indexed_element(Some(0))),
-            // col(MASS_SPECTRUM).list().eval(
-            //     concat_list([
-            //         mass_to_charge(indexed_element(Some(0))),
-            //         mass_to_charge(indexed_element(None)),
-            //     ])?
-            //     .list()
-            //     .unique(),
-            // mass_to_charge(indexed_element(None)),
-        ));
+        .with_column(
+            col(MASS_SPECTRUM)
+                .list()
+                .eval(mass_to_charge(element()))
+                .explode(ExplodeOptions {
+                    empty_as_null: false,
+                    keep_nulls: false,
+                })
+                .unique()
+                .implode(),
+        );
+    // .with_column(
+    //     concat_list([
+    //         col(MASS_SPECTRUM)
+    //             .list()
+    //             .eval(mass_to_charge(indexed_element(None))),
+    //         col(MASS_SPECTRUM)
+    //             .list()
+    //             .eval(mass_to_charge(indexed_element(Some(0)))),
+    //     ])?
+    //     .list()
+    //     .unique()
+    //     .list()
+    //     .sort(SortOptions::new()),
+    // );
+    // col(MASS_SPECTRUM).list().eval(
+    //     concat_list([
+    //         mass_to_charge(indexed_element(Some(0))),
+    //         mass_to_charge(indexed_element(None)),
+    //     ])?
+    //     .list()
+    //     .unique(),
+    // mass_to_charge(indexed_element(None)),
     println!("lazy_frame E1: {}", t.clone().collect().unwrap());
     Ok(
         lazy_frame.with_columns([col(META).struct_().with_fields(vec![
