@@ -75,7 +75,6 @@ fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     //     .apply(threshold(key), |_, _field| {
     //         Ok(Field::new(PlSmallStr::EMPTY, DataType::Boolean))
     //     });
-    // Дистанция (cos угла) менее чем 25%
     lazy_frame.with_columns([col(META).struct_().with_fields(vec![
         col(META).struct_().field_by_name(THRESHOLD).and(
             as_struct(vec![col(RETENTION_TIME), col(MASS_SPECTRUM)])
@@ -88,6 +87,8 @@ fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
 
 /// Threshold by cosine distance
 fn threshold(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Send + Sync {
+    const TARGET: &str = formatcp!("{SIGNAL}_right");
+
     move |column| {
         let r#struct = column.struct_()?;
         let retention_time = r#struct.field_by_name(RETENTION_TIME)?;
@@ -96,7 +97,7 @@ fn threshold(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Se
             .ok_or(polars_err!(NoData: "RETENTION_TIME"))?;
         let mass_spectrum_series = r#struct.field_by_name(MASS_SPECTRUM)?;
         let mass_spectrum = mass_spectrum_series.list()?;
-        let target = {
+        let mut target = {
             let series = mass_spectrum
                 .get_as_series(index)
                 .ok_or(polars_err!(oob = index, mass_spectrum.len()))?;
@@ -123,13 +124,14 @@ fn threshold(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Se
                 None,
             )?;
             let a = join[SIGNAL].f64()?.fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
-            let b = join[formatcp!("{SIGNAL}_right")]
+            let b = join[TARGET]
                 .f64()?
                 .fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
             let distance = cosine(&a, &b);
+            // Сходство (cos угла) более чем на 75%
             let threshold = distance < key.threshold.factor.0;
             if threshold {
-
+                target = join.lazy().with_column((col(SIGNAL) + col(TARGET)).median()).collect()?;
             }
             Ok(Some(threshold))
         }).collect::<PolarsResult<BooleanChunked>>()?.into_column())
