@@ -25,6 +25,7 @@ itertools = "0.14.0"
 ordered-float = { version = "5.1.0", features = ["serde"] }
 polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-features = false, features = [
     "bitwise",
+    "cross_join",
     "dtype-array",
     "dtype-duration",
     "dtype-i16",
@@ -42,6 +43,7 @@ polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-f
     "temporal",
     #
     "dtype-datetime",
+    # "pivot",
     # "dtype-decimal",
     # "array_arithmetic",
     "timezones",

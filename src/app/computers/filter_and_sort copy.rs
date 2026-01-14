@@ -10,7 +10,7 @@ use const_format::formatcp;
 use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
 use scirs2::spatial::cosine;
-use std::{f64, ops::Sub};
+use std::ops::Sub;
 use tracing::{instrument, trace};
 
 /// Peak computed
@@ -119,10 +119,10 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
     println!("E6: {}", group.clone().collect().unwrap());
     let cosine_distance = group.with_column(
         col(SIGNAL)
-            .apply(cosine_distance, |_, _field| {
-                Ok(Field::new(PlSmallStr::EMPTY, DataType::Float64))
+            .apply(cosine_distance(key), |_, _field| {
+                Ok(Field::new(PlSmallStr::EMPTY, DataType::Boolean))
             })
-            .alias(COSINE_DISTANCE),
+            .alias("CosineDistance"),
     );
     println!("E7: {}", cosine_distance.clone().collect().unwrap());
     lazy_frame = lazy_frame.join(
@@ -135,7 +135,7 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         col(META)
             .struct_()
             .field_by_name(THRESHOLD)
-            .and(col(COSINE_DISTANCE).lt(key.threshold.factor.0)),
+            .and(col("CosineDistance")),
     ])]);
     println!("E8: {}", lazy_frame.clone().collect().unwrap());
     Ok(lazy_frame)
@@ -157,61 +157,37 @@ fn indexed_element(index: Option<u64>) -> Expr {
     }
 }
 
-// fn cosine_distance(a: Expr, b: Expr) -> Expr { lit(1) - (a.clone() *
-//     b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt()) }
-
-// 374465/60000=6.2410833333333333333
-
-// target: [0.0, 0.0, 0.0, 0.0, 0.0, 553.0, 0.0, 313.0, 0.0, 230.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 247.0, 0.0, 151.0, 0.0, 0.0, 2517.0,
-// 246.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 173.0, 190.0, 0.0, 0.0, 2071.0,
-// 235.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 285.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 171.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 551.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 157.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 200.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 450.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 1125.0, 166.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 156.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-fn cosine_distance(column: Column) -> PolarsResult<Column> {
-    let signal = column.list()?;
-    // 4304847/60000=71.74745
-    let mut target = signal
-        .get_as_series(0)
-        .ok_or(polars_err!(oob = 0, signal.len()))?
-        .f64()?
-        .fill_null_with_values(f64::EPSILON)?
-        .into_no_null_iter()
-        .collect::<Vec<_>>();
-    // println!("target: {target:?}");
-    Ok(signal
-        .into_iter()
-        .map(|mass_spectrum| {
-            let source = mass_spectrum
-                .ok_or(polars_err!(NoData: "SIGNAL"))?
-                .f64()?
-                .fill_null_with_values(f64::EPSILON)?
-                .into_no_null_iter()
-                .collect::<Vec<_>>();
-            let distance = cosine(&source, &target);
-            // // Сходство (cos угла) более чем на 75%
-            // let threshold = distance < key.threshold.factor.0;
-            // if threshold {}
-            Ok(Some(distance))
-        })
-        .collect::<PolarsResult<Float64Chunked>>()?
-        .into_column())
+// fn cosine_distance(a: Expr, b: Expr) -> Expr {
+//     lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
+// }
+fn cosine_distance(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Send + Sync {
+    move |column| {
+        let signal = column.list()?;
+        let mut target = signal
+            .get_as_series(0)
+            .ok_or(polars_err!(oob = 0, signal.len()))?
+            .f64()?
+            .fill_null_with_values(0.0)?
+            .into_no_null_iter()
+            .collect::<Vec<_>>();
+        Ok(signal
+            .into_iter()
+            .map(|mass_spectrum| {
+                let source = mass_spectrum
+                    .ok_or(polars_err!(NoData: "SIGNAL"))?
+                    .f64()?
+                    .fill_null_with_values(0.0)?
+                    .into_no_null_iter()
+                    .collect::<Vec<_>>();
+                let distance = cosine(&source, &target);
+                // Сходство (cos угла) более чем на 75%
+                let threshold = distance < key.threshold.factor.0;
+                if threshold {}
+                Ok(Some(threshold))
+            })
+            .collect::<PolarsResult<BooleanChunked>>()?
+            .into_column())
+    }
 }
 
 /// Threshold by cosine distance
