@@ -24,9 +24,8 @@ impl Computer {
     #[instrument(skip(self), err)]
     fn try_compute(&mut self, key: Key) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
-        lazy_frame = compute(lazy_frame, key);
+        lazy_frame = compute(lazy_frame, key)?;
         lazy_frame = filter_and_sort(lazy_frame, key);
-        println!("lazy_frame E0: {}", lazy_frame.clone().collect().unwrap());
         let data_frame = lazy_frame.collect()?;
         trace!(?data_frame);
         Ok(HashedDataFrame::new(data_frame)?)
@@ -59,7 +58,7 @@ impl<'a> Key<'a> {
 type Value = HashedDataFrame;
 
 /// Format
-fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
+fn compute(lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
     // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
     //     .abs()
     //     .arg_min();
@@ -75,15 +74,94 @@ fn compute(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     //     .apply(threshold(key), |_, _field| {
     //         Ok(Field::new(PlSmallStr::EMPTY, DataType::Boolean))
     //     });
-    lazy_frame.with_columns([col(META).struct_().with_fields(vec![
-        col(META).struct_().field_by_name(THRESHOLD).and(
-            as_struct(vec![col(RETENTION_TIME), col(MASS_SPECTRUM)])
-                .apply(threshold(key), |_, _field| {
-                    Ok(Field::new(PlSmallStr::EMPTY, DataType::Boolean))
-                }),
-        ),
-    ])])
+    println!("lazy_frame E0: {}", lazy_frame.clone().collect().unwrap());
+    // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
+    //     .abs()
+    //     .arg_sort(false, false);
+    let t = lazy_frame
+        .clone()
+        .select([col(RETENTION_TIME), col(MASS_SPECTRUM)])
+        .sort_by_exprs(
+            [(col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES)).abs()],
+            SortMultipleOptions::new(),
+        )
+        .with_column(col(MASS_SPECTRUM).list().eval(
+            mass_to_charge(indexed_element(Some(0))),
+            // col(MASS_SPECTRUM).list().eval(
+            //     concat_list([
+            //         mass_to_charge(indexed_element(Some(0))),
+            //         mass_to_charge(indexed_element(None)),
+            //     ])?
+            //     .list()
+            //     .unique(),
+            // mass_to_charge(indexed_element(None)),
+        ));
+    println!("lazy_frame E1: {}", t.clone().collect().unwrap());
+    Ok(
+        lazy_frame.with_columns([col(META).struct_().with_fields(vec![
+            col(META).struct_().field_by_name(THRESHOLD).and(
+                as_struct(vec![col(RETENTION_TIME), col(MASS_SPECTRUM)])
+                    .apply(threshold(key), |_, _field| {
+                        Ok(Field::new(PlSmallStr::EMPTY, DataType::Boolean))
+                    }),
+            ),
+        ])]),
+    )
 }
+
+fn mass_to_charge(expr: Expr) -> Expr {
+    expr.struct_()
+        .field_by_name(MASS_TO_CHARGE)
+        .round(0, RoundMode::HalfToEven)
+}
+
+fn indexed_element(index: Option<u64>) -> Expr {
+    match index {
+        Some(index) => element().get(index),
+        None => element(),
+    }
+}
+
+fn cosine_distance(a: Expr, b: Expr) -> Expr {
+    lit(1) - (a.clone() * b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt())
+}
+
+//     let mut tagret = df! {
+//         MASS_TO_CHARGE => Series::new_empty(PlSmallStr::from_static(MASS_TO_CHARGE), &DataType::Float64),
+//         SIGNAL => Series::new_empty(PlSmallStr::from_static(SIGNAL), &DataType::Float64),
+//     }?;
+//     let fields = column.struct_()?.fields_as_series();
+//     Ok(zip(fields[0].list()?, fields[1].list()?).into_iter().map(|(source, tagret)| {
+//         let source = {
+//             let series = source.ok_or(polars_err!(NoData: "SOURCE"))?;
+//             let r#struct = series.struct_()?;
+//             df! {
+//                 MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+//                 SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+//             }?
+//         };
+//         let tagret = {
+//             let series = tagret.ok_or(polars_err!(NoData: "TAGRET"))?;
+//             let r#struct = series.struct_()?;
+//             df! {
+//                 MASS_TO_CHARGE => r#struct.field_by_name(MASS_TO_CHARGE)?.round(0, RoundMode::HalfToEven)?.f64()?.clone(),
+//                 SIGNAL => r#struct.field_by_name(SIGNAL)?.f64()?.clone(),
+//             }?
+//         };
+//         let join = source.join(
+//             &tagret,
+//             [MASS_TO_CHARGE],
+//             [MASS_TO_CHARGE],
+//             JoinArgs::new(JoinType::Full).with_coalesce(JoinCoalesce::CoalesceColumns),
+//             None,
+//         )?;
+//         let a = join[SIGNAL].f64()?.fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+//         let b = join[formatcp!("{SIGNAL}_right")]
+//             .f64()?
+//             .fill_null_with_values(0.0)?.into_no_null_iter().collect::<Vec<_>>();
+//         Ok(Some(cosine(&a, &b)))
+//     }).collect::<PolarsResult<Float64Chunked>>()?.into_column())
+// }
 
 /// Threshold by cosine distance
 fn threshold(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Send + Sync {
