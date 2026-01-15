@@ -29,7 +29,7 @@ pub(crate) struct Computer;
 impl Computer {
     fn try_compute(&mut self, key: Key<'_>) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
-        println!("lazy_frame P0: {}", lazy_frame.clone().collect().unwrap());
+        // println!("lazy_frame P0: {}", lazy_frame.clone().collect().unwrap());
         // Convert
         lazy_frame = lazy_frame.with_columns([col(RETENTION_TIME)
             .cast(DataType::Duration(TimeUnit::Milliseconds))
@@ -93,7 +93,7 @@ fn compute(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
 
 // RETENTION_TIME: Vec<Bar>, stacked, sorted by MASS_TO_CHARGE
 fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
-    println!("data_frame P0: {}", data_frame);
+    // println!("data_frame P0: {}", data_frame);
     let meta = data_frame[META].struct_()?;
     let threshold_series = meta.field_by_name(THRESHOLD)?;
     let threshold = threshold_series.bool()?;
