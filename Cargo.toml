@@ -43,6 +43,8 @@ polars = { git = "https://github.com/pola-rs/polars", rev = "05f6f2d", default-f
     "temporal",
     #
     "dtype-datetime",
+    "new_streaming",
+    # "diagonal_concat",
     # "pivot",
     # "dtype-decimal",
     # "array_arithmetic",
