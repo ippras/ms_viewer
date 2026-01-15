@@ -90,34 +90,16 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         )
         .unnest(cols([MASS_SPECTRUM]), None)
         .with_column(col(MASS_TO_CHARGE).round(0, RoundMode::HalfToEven))
-        .cache()
-        .group_by_stable([col(RETENTION_TIME), col(MASS_TO_CHARGE)])
-        .agg([col(SIGNAL).mean().alias(SIGNAL)]);
+        .group_by([col(RETENTION_TIME), col(MASS_TO_CHARGE)])
+        .agg([col(SIGNAL).mean()]);
     println!("E2: {}", explode.clone().collect().unwrap());
     let mass_to_charge = explode.clone().select([col(MASS_TO_CHARGE).unique()]);
     println!("E3: {}", mass_to_charge.clone().collect().unwrap());
     // Получаем все возможные пары (RETENTION_TIME, MASS_TO_CHARGE)
     let cross_join = retention_time.cross_join(mass_to_charge, None).cache();
-    println!(
-        "E4: {}",
-        cross_join
-            .clone()
-            .filter(col(MASS_TO_CHARGE).eq(94))
-            .collect()
-            .unwrap()
-    );
-
-    // let concat = concat(
-    //     [cross_join.clone(), explode.clone()],
-    //     UnionArgs {
-    //         diagonal: true,
-    //         ..Default::default()
-    //     },
-    // )?;
-    // println!("E5.0: {}", concat.clone().collect().unwrap());
-
+    println!("E4: {}", cross_join.clone().collect().unwrap());
     // Сопоставляем с SIGNAL
-    let mut join = cross_join.join(
+    let join = cross_join.join(
         explode,
         [col(RETENTION_TIME), col(MASS_TO_CHARGE)],
         [col(RETENTION_TIME), col(MASS_TO_CHARGE)],
@@ -128,22 +110,7 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
             ..Default::default()
         },
     );
-    println!(
-        "E5.1.1: {}",
-        join.clone()
-            .filter(col(MASS_TO_CHARGE).eq(94))
-            .collect()
-            .unwrap()
-    );
-    // TODO: bug? not need unique
-    // join = join.unique_stable(None, UniqueKeepStrategy::Any);
-    println!(
-        "E5.1.2: {}",
-        join.clone()
-            .filter(col(MASS_TO_CHARGE).eq(94))
-            .collect()
-            .unwrap()
-    );
+    println!("E5.1.1: {}", join.clone().collect().unwrap());
     let sort = join
         .with_column(
             (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
@@ -218,10 +185,10 @@ fn cosine_distance(
                 // // Сходство (cos угла) более чем на 75%
                 // let threshold = distance < key.threshold.factor.0;
                 // if threshold {}
-                // if distance.is_nan() {
-                //     println!("source: {source:?}");
-                //     println!("target: {target:?}");
-                // }
+                if distance.is_nan() {
+                    println!("source: {source:?}");
+                    println!("target: {target:?}");
+                }
                 Ok(Some(distance))
             })
             .collect::<PolarsResult<Float64Chunked>>()?
