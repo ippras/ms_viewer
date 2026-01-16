@@ -11,7 +11,7 @@ use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
 use scirs2::spatial::cosine;
 use std::{f64, ops::Sub};
-use tracing::{instrument, trace};
+use tracing::{info, instrument, trace};
 
 /// Peak computed
 pub(crate) type Computed = FrameCache<Value, Computer>;
@@ -92,7 +92,7 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         .with_column(col(MASS_TO_CHARGE).round(0, RoundMode::HalfToEven))
         .group_by([col(RETENTION_TIME), col(MASS_TO_CHARGE)])
         .agg([col(SIGNAL).mean()]);
-    println!("E2: {}", explode.clone().collect().unwrap());
+    info!("E2: {}", explode.clone().collect().unwrap());
     let mass_to_charge = explode.clone().select([col(MASS_TO_CHARGE).unique()]);
     println!("E3: {}", mass_to_charge.clone().collect().unwrap());
     // Получаем все возможные пары (RETENTION_TIME, MASS_TO_CHARGE)
