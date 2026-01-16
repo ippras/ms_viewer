@@ -145,7 +145,7 @@ impl Pane {
                 .cache::<Computed>()
                 .get(Key::new(&self.frame.data, &state.settings))
         });
-        let frame = ui.memory_mut(|memory| {
+        let filter_and_sort = ui.memory_mut(|memory| {
             memory
                 .caches
                 .cache::<FilterAndSortComputed>()
@@ -157,7 +157,7 @@ impl Pane {
                     memory
                         .caches
                         .cache::<PlotComputed>()
-                        .get(PlotKey::new(&frame, &state.settings))
+                        .get(PlotKey::new(&filter_and_sort, &state.settings))
                 });
                 PlotView::new(data, &state.settings).show(ui);
             }
@@ -166,7 +166,7 @@ impl Pane {
                     memory
                         .caches
                         .cache::<TableComputed>()
-                        .get(TableKey::new(&frame, &state.settings))
+                        .get(TableKey::new(&filter_and_sort, &state.settings))
                 });
                 TableView::new(&data_frame, state).show(ui);
             }

@@ -11,7 +11,7 @@ use egui::util::cache::{ComputerMut, FrameCache};
 use polars::prelude::*;
 use scirs2::spatial::cosine;
 use std::{f64, ops::Sub};
-use tracing::{info, instrument, trace};
+use tracing::{debug, error, instrument, trace};
 
 /// Peak computed
 pub(crate) type Computed = FrameCache<Value, Computer>;
@@ -21,7 +21,7 @@ pub(crate) type Computed = FrameCache<Value, Computer>;
 pub(crate) struct Computer;
 
 impl Computer {
-    #[instrument(skip(self), err)]
+    #[instrument(skip_all, err)]
     fn try_compute(&mut self, key: Key) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
         lazy_frame = compute(lazy_frame, key)?;
@@ -74,10 +74,10 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
     //     false,
     //     PlSmallStr::from_static("_"),
     // );
-    println!("E0: {}", lazy_frame.clone().collect().unwrap());
+    debug!(lazy_frame = %lazy_frame.clone().collect().unwrap());
     let retention_time = lazy_frame.clone().select([col(RETENTION_TIME)]);
-    println!("E1: {}", retention_time.clone().collect().unwrap());
-    // Необходима группировка в конце, так как иначе массы 93.8 и 94.3 после округления дадут две строки с 94.0
+    debug!(retention_time = %retention_time.clone().collect().unwrap());
+    // В конце необходима группировка, так как иначе массы 99.5 и 100.4 после округления дадут две строки с 100.0
     let explode = lazy_frame
         .clone()
         .select([col(RETENTION_TIME), col(MASS_SPECTRUM)])
@@ -92,53 +92,42 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         .with_column(col(MASS_TO_CHARGE).round(0, RoundMode::HalfToEven))
         .group_by([col(RETENTION_TIME), col(MASS_TO_CHARGE)])
         .agg([col(SIGNAL).mean()]);
-    info!("E2: {}", explode.clone().collect().unwrap());
+    debug!(explode = %explode.clone().collect().unwrap());
     let mass_to_charge = explode.clone().select([col(MASS_TO_CHARGE).unique()]);
-    println!("E3: {}", mass_to_charge.clone().collect().unwrap());
+    debug!(mass_to_charge = %mass_to_charge.clone().collect().unwrap());
     // Получаем все возможные пары (RETENTION_TIME, MASS_TO_CHARGE)
     let cross_join = retention_time.cross_join(mass_to_charge, None).cache();
-    println!("E4: {}", cross_join.clone().collect().unwrap());
+    debug!(cross_join = %cross_join.clone().collect().unwrap());
     // Сопоставляем с SIGNAL
     let join = cross_join.join(
         explode,
         [col(RETENTION_TIME), col(MASS_TO_CHARGE)],
         [col(RETENTION_TIME), col(MASS_TO_CHARGE)],
-        JoinArgs {
-            coalesce: JoinCoalesce::CoalesceColumns,
-            // nulls_equal: true,
-            how: JoinType::Left,
-            ..Default::default()
-        },
+        JoinArgs::new(JoinType::Left),
     );
-    println!("E5.1.1: {}", join.clone().collect().unwrap());
-    let sort = join
-        .with_column(
-            (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
-                .abs()
-                .alias("Abs"),
-        )
-        .sort_by_exprs(
-            [col("Abs"), col(MASS_TO_CHARGE)],
-            SortMultipleOptions::new(),
-        );
-    // (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
-    //     .abs()
-    //     .arg_sort(false, false),
-    println!("E5.2: {}", sort.clone().collect().unwrap());
-    let group = sort.group_by_stable([col(RETENTION_TIME)]).agg([
-        // col(MASS_TO_CHARGE),
-        col(SIGNAL),
-    ]);
-    println!("E6: {}", group.clone().collect().unwrap());
-    let cosine_distance = group.with_column(
+    debug!(join = %join.clone().collect().unwrap());
+    // Сортируем по
+    let sort = join.sort_by_exprs(
+        [
+            (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES)).abs(),
+            col(MASS_TO_CHARGE),
+        ],
+        SortMultipleOptions::new(),
+    );
+    debug!(sort = %sort.clone().collect().unwrap());
+    let group = sort
+        .group_by_stable([col(RETENTION_TIME)])
+        .agg([col(SIGNAL)]);
+    debug!(group = %group.clone().collect().unwrap());
+    let cosine_distance = group.select([
+        col(RETENTION_TIME),
         col(SIGNAL)
-            // col(MASS_TO_CHARGE)
             .apply(cosine_distance(0), |_, _field| {
                 Ok(Field::new(PlSmallStr::EMPTY, DataType::Float64))
             })
             .alias(COSINE_DISTANCE),
-    );
-    println!("E7: {}", cosine_distance.clone().collect().unwrap());
+    ]);
+    debug!(cosine_distance = %cosine_distance.clone().collect().unwrap());
     lazy_frame = lazy_frame.join(
         cosine_distance,
         [col(RETENTION_TIME)],
@@ -151,14 +140,9 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
             .field_by_name(THRESHOLD)
             .and(col(COSINE_DISTANCE).lt(key.threshold.factor.0)),
     ])]);
-    println!("E8: {}", lazy_frame.clone().collect().unwrap());
+    debug!(lazy_frame = %lazy_frame.clone().collect().unwrap());
     Ok(lazy_frame)
 }
-
-// fn cosine_distance(a: Expr, b: Expr) -> Expr { lit(1) - (a.clone() *
-//     b.clone()).sum() / (a.pow(2).sum().sqrt() * b.pow(2).sum().sqrt()) }
-
-// 374465/60000=6.2410833333333333333
 
 fn cosine_distance(
     index: usize,
@@ -186,8 +170,7 @@ fn cosine_distance(
                 // let threshold = distance < key.threshold.factor.0;
                 // if threshold {}
                 if distance.is_nan() {
-                    println!("source: {source:?}");
-                    println!("target: {target:?}");
+                    error!(?source, ?target);
                 }
                 Ok(Some(distance))
             })
@@ -196,28 +179,6 @@ fn cosine_distance(
     }
 }
 
-// target: [0.0, 0.0, 0.0, 0.0, 0.0, 553.0, 0.0, 313.0, 0.0, 230.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 247.0, 0.0, 151.0, 0.0, 0.0, 2517.0,
-// 246.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 173.0, 190.0, 0.0, 0.0, 2071.0,
-// 235.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 285.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 171.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 551.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 157.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 200.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 450.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 1125.0, 166.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 156.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-// 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 fn _cosine_distance(column: Column) -> PolarsResult<Column> {
     let signal = column.list()?;
     let mut target = signal
