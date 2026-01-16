@@ -134,12 +134,17 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         [col(RETENTION_TIME)],
         JoinArgs::new(JoinType::Left),
     );
-    lazy_frame = lazy_frame.with_columns([col(META).struct_().with_fields(vec![
-        col(META)
-            .struct_()
-            .field_by_name(THRESHOLD)
-            .and(col(COSINE_DISTANCE).lt(key.threshold.factor.0)),
-    ])]);
+    lazy_frame = lazy_frame.select([
+        col(RETENTION_TIME),
+        col(MASS_SPECTRUM),
+        col(META).struct_().with_fields(vec![
+            col(COSINE_DISTANCE),
+            col(META)
+                .struct_()
+                .field_by_name(THRESHOLD)
+                .and(col(COSINE_DISTANCE).lt(key.threshold.factor.0)),
+        ]),
+    ]);
     debug!(lazy_frame = %lazy_frame.clone().collect().unwrap());
     Ok(lazy_frame)
 }

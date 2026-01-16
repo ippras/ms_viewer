@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use crate::{
     app::{states::pane::State, widgets::mass_spectrum::MassSpectrum},
     r#const::*,
@@ -7,22 +5,19 @@ use crate::{
 };
 use const_format::formatcp;
 use egui::{
-    CentralPanel, Direction, Frame, Id, Layout, Margin, MenuBar, RichText, ScrollArea, TextStyle,
+    CentralPanel, Direction, Frame, Id, Layout, MenuBar, RichText, ScrollArea, TextStyle,
     TopBottomPanel, Ui,
 };
 use egui_ext::ResponseExt;
-use egui_l20n::prelude::*;
+use egui_extras::{Column, TableBuilder};
 use egui_phosphor::regular::{COPY, COPY_SIMPLE, TAG, X};
-use egui_table::{CellInfo, HeaderCellInfo, HeaderRow, Table, TableDelegate, TableState};
 use egui_tiles::{TileId, UiResponse};
 use metadata::egui::MetadataWidget;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
-use tracing::{error, instrument};
+use tracing::error;
 
 const COLUMN_COUNT: usize = 3;
-const LEN: usize = top::FACTORS.end;
-const TOP: &[Range<usize>] = &[top::IDENTIFIER, top::STEREOSPECIFIC_NUMBERS, top::FACTORS];
 
 /// Table view
 pub(crate) struct TableView<'a> {
@@ -33,263 +28,6 @@ pub(crate) struct TableView<'a> {
 impl<'a> TableView<'a> {
     pub(crate) fn new(data: &'a HashedDataFrame, state: &'a mut State) -> Self {
         Self { data, state }
-    }
-}
-
-// let total_rows = self.data.height();
-impl TableView<'_> {
-    pub(crate) fn show(&mut self, ui: &mut Ui) {
-        let id_salt = Id::new(ID_SOURCE).with("Table");
-        if self.state.event.reset_table_state {
-            let id = TableState::id(ui, Id::new(id_salt));
-            TableState::reset(ui.ctx(), id);
-            self.state.event.reset_table_state = false;
-        }
-        let data_frame = self.data_frame(ui);
-        let height = ui.text_style_height(&TextStyle::Heading) + 2.0 * MARGIN.y;
-        let num_rows = data_frame.height() as u64;
-        let num_columns = LEN;
-        Table::new()
-            .id_salt(id_salt)
-            .num_rows(num_rows)
-            .columns(vec![
-                Column::default()
-                    .resizable(self.state.settings.table.resizable);
-                num_columns
-            ])
-            .num_sticky_cols(self.state.settings.table.sticky_columns)
-            .headers([
-                HeaderRow {
-                    height,
-                    groups: TOP.to_vec(),
-                },
-                HeaderRow::new(height),
-            ])
-            .show(ui, self);
-    }
-
-    fn header_cell_content_ui(&mut self, ui: &mut Ui, row: usize, column: Range<usize>) {
-        if self.state.settings.table.truncate_headers {
-            ui.style_mut().wrap_mode = Some(TextWrapMode::Truncate);
-        }
-        match (row, column) {
-            // Top
-            (0, top::IDENTIFIER) => {
-                ui.heading(ui.localize("Identifier.abbreviation"))
-                    .on_hover_localized("Identifier");
-            }
-            (0, top::STEREOSPECIFIC_NUMBERS) => {
-                ui.heading(ui.localize("StereospecificNumber?number=many"));
-            }
-            (0, top::FACTORS) => {
-                ui.heading(ui.localize("Factors"));
-            }
-            _ => {}
-        };
-    }
-
-    #[instrument(skip(self, ui), err)]
-    fn cell_content_ui(
-        &mut self,
-        ui: &mut Ui,
-        row: usize,
-        column: Range<usize>,
-    ) -> PolarsResult<()> {
-        let data_frame = self.data_frame(ui);
-        match (row, column) {
-            (row, bottom::INDEX) => {
-                ui.label(row.to_string());
-            }
-            (row, bottom::LABEL) => {
-                if let Some(text) = data_frame[LABEL].str()?.get(row) {
-                    Label::new(text).truncate().ui(ui).try_on_hover_ui(
-                        |ui| -> PolarsResult<()> {
-                            ui.heading(ui.localize(PROPERTIES));
-                            let properties = &data_frame[PROPERTIES];
-                            Grid::new(ui.next_auto_id())
-                                .show(ui, |ui| {
-                                    ui.label(ui.localize(IODINE_VALUE));
-                                    ui.label(
-                                        properties
-                                            .struct_()?
-                                            .field_by_name(IODINE_VALUE)?
-                                            .get(row)?
-                                            .str_value(),
-                                    );
-                                    ui.end_row();
-
-                                    ui.label(ui.localize(RELATIVE_ATOMIC_MASS));
-                                    ui.label(
-                                        properties
-                                            .struct_()?
-                                            .field_by_name(RELATIVE_ATOMIC_MASS)?
-                                            .get(row)?
-                                            .str_value(),
-                                    );
-                                    ui.end_row();
-                                    Ok(())
-                                })
-                                .inner
-                        },
-                    )?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    // fn body_cell_content_ui(
-    //     &mut self,
-    //     ui: &mut Ui,
-    //     row: usize,
-    //     column: Range<usize>,
-    // ) -> PolarsResult<()> {
-    //     let data_frame = self.data_frame(ui);
-    //     // Color
-    //     if let Some(standard) = data_frame[STANDARD]
-    //         .struct_()?
-    //         .field_by_name(MASK)?
-    //         .bool()?
-    //         .get(row)
-    //         && standard
-    //     {
-    //         ui.visuals_mut().override_text_color = Some(ui.visuals().strong_text_color());
-    //     } else if let Some(threshold) = data_frame[THRESHOLD].bool()?.get(row)
-    //         && !threshold
-    //     {
-    //         ui.multiply_opacity(ui.visuals().disabled_alpha());
-    //     }
-    //     match (row, column) {
-    //         (row, bottom::INDEX) => {
-    //             ui.label(row.to_string());
-    //         }
-    //         (row, bottom::LABEL) => {
-    //             if let Some(text) = data_frame[LABEL].str()?.get(row) {
-    //                 Label::new(text).truncate().ui(ui).try_on_hover_ui(
-    //                     |ui| -> PolarsResult<()> {
-    //                         ui.heading(ui.localize(PROPERTIES));
-    //                         let properties = &data_frame[PROPERTIES];
-    //                         Grid::new(ui.next_auto_id())
-    //                             .show(ui, |ui| {
-    //                                 ui.label(ui.localize(IODINE_VALUE));
-    //                                 ui.label(
-    //                                     properties
-    //                                         .struct_()?
-    //                                         .field_by_name(IODINE_VALUE)?
-    //                                         .get(row)?
-    //                                         .str_value(),
-    //                                 );
-    //                                 ui.end_row();
-
-    //                                 ui.label(ui.localize(RELATIVE_ATOMIC_MASS));
-    //                                 ui.label(
-    //                                     properties
-    //                                         .struct_()?
-    //                                         .field_by_name(RELATIVE_ATOMIC_MASS)?
-    //                                         .get(row)?
-    //                                         .str_value(),
-    //                                 );
-    //                                 ui.end_row();
-    //                                 Ok(())
-    //                             })
-    //                             .inner
-    //                     },
-    //                 )?;
-    //             }
-    //         }
-    //         (row, bottom::FATTY_ACID) => {
-    //             if let Some(fatty_acid) = data_frame.try_fatty_acid()?.delta()?.get(row) {
-    //                 Label::new(fatty_acid).truncate().ui(ui);
-    //             }
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS123) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS123], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .show(ui)?
-    //                 .try_on_hover_ui(|ui| -> PolarsResult<()> {
-    //                     ui.heading(ui.localize(STANDARD));
-    //                     let factors = &data_frame[STANDARD]
-    //                         .struct_()?
-    //                         .field_by_name(STEREOSPECIFIC_NUMBERS123)?;
-    //                     let mean = factors
-    //                         .struct_()?
-    //                         .field_by_name(MEAN)?
-    //                         .f64()?
-    //                         .get(row)
-    //                         .unwrap_or_default();
-    //                     let standard_deviation = factors
-    //                         .struct_()?
-    //                         .field_by_name(STANDARD_DEVIATION)?
-    //                         .f64()?
-    //                         .get(row)
-    //                         .unwrap_or_default();
-    //                     let sample_series = factors.struct_()?.field_by_name(SAMPLE)?;
-    //                     let sample = sample_series.get(row)?.str_value();
-    //                     Grid::new(ui.next_auto_id())
-    //                         .show(ui, |ui| {
-    //                             ui.label(ui.localize(FACTORS));
-    //                             ui.label(format!(
-    //                                 "{mean}{NO_BREAK_SPACE}±{standard_deviation} {sample}"
-    //                             ));
-    //                             ui.end_row();
-    //                             Ok(())
-    //                         })
-    //                         .inner
-    //                 })?;
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS2) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS2], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS13) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS13], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::ENRICHMENT_FACTOR) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [FACTORS, ENRICHMENT], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::SELECTIVITY_FACTOR) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [FACTORS, SELECTIVITY], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         _ => {}
-    //     }
-    //     Ok(())
-    // }
-}
-
-impl TableDelegate for TableView<'_> {
-    fn header_cell_ui(&mut self, ui: &mut Ui, cell: &HeaderCellInfo) {
-        Frame::new()
-            .inner_margin(Margin::from(MARGIN))
-            .show(ui, |ui| {
-                self.header_cell_content_ui(ui, cell.row_nr, cell.col_range.clone())
-            });
-    }
-
-    fn cell_ui(&mut self, ui: &mut Ui, cell: &CellInfo) {
-        if cell.row_nr.is_multiple_of(2) {
-            ui.painter()
-                .rect_filled(ui.max_rect(), 0.0, ui.visuals().faint_bg_color);
-        }
-        Frame::new()
-            .inner_margin(Margin::from(MARGIN))
-            .show(ui, |ui| {
-                _ = self.cell_content_ui(ui, cell.row_nr as _, cell.col_nr..cell.col_nr + 1);
-            });
     }
 }
 

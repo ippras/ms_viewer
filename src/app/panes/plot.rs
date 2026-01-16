@@ -9,16 +9,14 @@ use crate::{
     r#const::*,
     utils::hash::{HashedDataFrame, HashedMetaDataFrame},
 };
-use egui::{
-    Align2, Color32, RichText, Ui, Vec2,
-    emath::{Float, OrderedFloat, round_to_decimals},
-};
+use egui::{Align2, Color32, RichText, Ui, Vec2, emath::round_to_decimals};
 use egui_ext::color;
 use egui_plot::{
     Bar, BarChart, HLine, Legend, Line, Plot, PlotMemory, PlotPoint, PlotPoints, Text,
 };
 use indexmap::IndexMap;
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use polars::{error::PolarsResult, frame::DataFrame};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -315,13 +313,13 @@ impl PlotView<'_> {
                 //     bar_chart.color(color(index))
                 // };
                 let bar_chart = BarChart::new("Bar chart", bars)
-                    .color(color(index))
+                    // .color(color(index))
                     .element_formatter(Box::new(move |bar, _bar_chart| {
                         let mut label = String::new();
                         _ = writeln!(&mut label, "Retention time (x): {}", bar.argument);
                         _ = writeln!(&mut label, "Signal (y): {}", bar.value);
                         _ = writeln!(&mut label, "Mass to charge: {}", bar.name);
-                        let mass_spectrum = &mass_spectrums[&bar.argument.ord()];
+                        let mass_spectrum = &mass_spectrums[&OrderedFloat(bar.argument)];
                         let Some((position, _)) =
                             mass_spectrum
                                 .iter()
@@ -361,9 +359,12 @@ impl PlotView<'_> {
             }
         });
         plot_response.response.context_menu(|ui| {
+            if let Some(id) = plot_response.hovered_plot_item {
+                println!("ContextMenu: {id:?}");
+            }
             if ui.button("RetentionTime").clicked() {
-                let id = plot_response.hovered_plot_item;
-                println!("RetentionTime: ");
+                let xy = plot_response.transform.dpos_dvalue();
+                println!("RetentionTime: {xy:?}");
             }
         });
     }

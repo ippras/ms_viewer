@@ -103,8 +103,8 @@ impl IonChromatogram<'_> {
                                 row.col(|ui| {
                                     let retention_time = retention_time_series.i32().unwrap();
                                     let value = retention_time.get(row_index).unwrap();
-                                    let formated = self.settings.retention_time.format(value);
-                                    ui.label(formated).on_hover_text(formated.precision(None));
+                                    // let formated = self.settings.retention_time.format(value);
+                                    ui.label(value.to_string());
                                 });
                                 // Signal
                                 row.col(|ui| {

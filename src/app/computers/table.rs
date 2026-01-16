@@ -1,5 +1,5 @@
 use crate::{
-    app::{computers::MINUTES, states::pane::settings::Settings},
+    app::states::pane::settings::{RetentionTimes, Settings},
     r#const::*,
     utils::hash::HashedDataFrame,
 };
@@ -38,14 +38,16 @@ impl ComputerMut<Key<'_>, Value> for Computer {
 pub struct Key<'a> {
     pub(crate) frame: &'a HashedDataFrame,
     pub(crate) precision: usize,
+    pub(crate) retention_time: &'a RetentionTimes,
     pub(crate) significant: bool,
 }
 
 impl<'a> Key<'a> {
-    pub(crate) fn new(frame: &'a HashedDataFrame, settings: &Settings) -> Self {
+    pub(crate) fn new(frame: &'a HashedDataFrame, settings: &'a Settings) -> Self {
         Self {
             frame,
             precision: settings.precision,
+            retention_time: &settings.retention_time,
             significant: settings.significant,
         }
     }
@@ -58,10 +60,8 @@ type Value = HashedDataFrame;
 fn format(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     lazy_frame.with_columns([
         // Retention time
-        col(RETENTION_TIME)
-            .cast(DataType::Duration(TimeUnit::Milliseconds))
-            .to_physical()
-            / lit(MINUTES),
+        // to_minutes(col(RETENTION_TIME)),
+        col(RETENTION_TIME).cast(DataType::Duration(TimeUnit::Milliseconds)),
         // Mass spectrum
         col(MASS_SPECTRUM)
             .list()

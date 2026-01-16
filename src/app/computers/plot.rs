@@ -1,6 +1,6 @@
 use crate::{
     app::{
-        computers::MINUTES,
+        computers::to_minutes,
         states::pane::settings::{
             Plot, Settings, Sort, Threshold, mass_spectrum::Sort as MassSpectrumSort,
         },
@@ -10,14 +10,17 @@ use crate::{
 };
 use const_format::formatcp;
 use egui::{
-    emath::{Float, OrderedFloat},
+    // emath::{Float, OrderedFloat},
+    Color32,
     util::cache::{ComputerMut, FrameCache},
 };
 use egui_ext::color;
 use egui_plot::Bar;
 use indexmap::IndexMap;
+use ordered_float::OrderedFloat;
 use polars::prelude::*;
 use std::{collections::HashMap, iter::zip};
+use tracing::{debug, info, instrument};
 
 /// Plot computed
 pub(crate) type Computed = FrameCache<Value, Computer>;
@@ -27,14 +30,12 @@ pub(crate) type Computed = FrameCache<Value, Computer>;
 pub(crate) struct Computer;
 
 impl Computer {
+    #[instrument(skip_all, err)]
     fn try_compute(&mut self, key: Key<'_>) -> PolarsResult<Value> {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
-        // println!("lazy_frame P0: {}", lazy_frame.clone().collect().unwrap());
+        info!(lazy_frame = %lazy_frame.clone().collect().unwrap());
         // Convert
-        lazy_frame = lazy_frame.with_columns([col(RETENTION_TIME)
-            .cast(DataType::Duration(TimeUnit::Milliseconds))
-            .to_physical()
-            / lit(MINUTES)]);
+        lazy_frame = lazy_frame.with_columns([to_minutes(col(RETENTION_TIME))]);
         let data_frame = lazy_frame.collect()?;
         // Compute
         let value = compute(&data_frame, key)?;
@@ -93,7 +94,7 @@ fn compute(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
 
 // RETENTION_TIME: Vec<Bar>, stacked, sorted by MASS_TO_CHARGE
 fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
-    // println!("data_frame P0: {}", data_frame);
+    info!(%data_frame);
     let meta = data_frame[META].struct_()?;
     let threshold_series = meta.field_by_name(THRESHOLD)?;
     let threshold = threshold_series.bool()?;
@@ -121,9 +122,9 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
         let Some(threshold) = threshold else {
             polars_bail!(NoData: "{THRESHOLD}");
         };
-        value
+        let threshold = value
             .thresholds
-            .entry(retention_time.ord())
+            .entry(OrderedFloat(retention_time))
             .or_insert(threshold);
         let mass_spectrum = mass_spectrum.struct_()?;
         // MASS_SPECTRUM: MASS_TO_CHARGE | SIGNAL
@@ -135,14 +136,19 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
             let signal = signal.unwrap_or_default();
             value
                 .mass_spectrums
-                .entry(retention_time.ord())
+                .entry(OrderedFloat(retention_time))
                 .or_insert_with(Vec::new)
                 .push((mass_to_charge, signal));
             let signal = signal as _;
-            let offset = offsets.entry(retention_time.ord()).or_default();
+            let offset = offsets.entry(OrderedFloat(retention_time)).or_default();
             let mut bar = Bar::new(retention_time, signal)
                 .name(mass_to_charge.to_string())
                 .width(key.plot.width.0);
+            if *threshold {
+                bar = bar.stroke((1.0, color(mass_to_charge.round() as usize)));
+            } else {
+                bar = bar.stroke((1.0, Color32::GRAY));
+            }
             if key.plot.fill {
                 bar = bar.fill(color(mass_to_charge.round() as usize));
             }
@@ -154,7 +160,7 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
             *offset += signal;
             value
                 .bars
-                .entry(mass_to_charge.ord())
+                .entry(OrderedFloat(mass_to_charge))
                 .or_insert_with(Vec::new)
                 .push(bar);
         }
@@ -167,8 +173,8 @@ fn by_retention_time(data_frame: &DataFrame, key: Key) -> PolarsResult<Value> {
         let rolling_median = rolling_median_series.f64()?;
         let sum_series = meta.field_by_name(formatcp!("{SIGNAL}.{SUM}"))?;
         let sum = sum_series.f64()?;
-        value.mean = sum.mean().map(Float::ord);
-        value.median = sum.median().map(Float::ord);
+        value.mean = sum.mean().map(OrderedFloat);
+        value.median = sum.median().map(OrderedFloat);
         for (retention_time, (rolling_mean, rolling_median)) in
             zip(retention_time, zip(rolling_mean, rolling_median))
         {

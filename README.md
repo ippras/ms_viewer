@@ -1,6 +1,7 @@
 # MS viewer
 
 `$env:RUST_LOG="ms_viewer=trace"`
+`$env:RUST_LOG="ms_viewer::app::computers::plot=debug"`
 
 ## Links
 

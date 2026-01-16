@@ -355,6 +355,12 @@ fn threshold(lazy_frame: LazyFrame, key: Key) -> LazyFrame {
     )
 }
 
+fn to_minutes(expr: Expr) -> Expr {
+    expr.cast(DataType::Duration(TimeUnit::Milliseconds))
+        .to_physical()
+        / lit(MINUTES)
+}
+
 pub(crate) mod filter_and_sort;
 pub(crate) mod plot;
 pub(crate) mod table;

@@ -1,23 +1,15 @@
 use self::mass_spectrum::{MassSpectrum, Sort as MassSpectrumSort};
 use crate::app::MAX_PRECISION;
-use egui::{ComboBox, DragValue, Slider, Ui, Widget, WidgetText};
+use egui::{ComboBox, DragValue, Slider, Ui, Widget};
+use egui_dnd::dnd;
 use egui_ext::LabeledSeparator;
 use egui_l20n::prelude::*;
-use egui_phosphor::regular::{CHART_BAR, TABLE};
-use egui_tiles::ContainerKind;
+use egui_phosphor::regular::{CHART_BAR, DOTS_SIX_VERTICAL, PLUS, TABLE};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{self, Display, Formatter},
-    hash::{Hash, Hasher},
-};
-use uom::si::{
-    f32::Time,
-    time::{Units, millisecond, minute, second},
-};
 
 /// Settings
-#[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Hash, PartialEq, Serialize)]
 pub(crate) struct Settings {
     pub(crate) percent: bool,
     pub(crate) precision: usize,
@@ -27,7 +19,6 @@ pub(crate) struct Settings {
     pub(crate) explode: bool,
     pub(crate) filter_null: bool,
     pub(crate) mass_to_charge: MassToCharge,
-    pub(crate) retention_time: RetentionTime,
     pub(crate) signal: Signal,
 
     pub(crate) sort: Sort,
@@ -39,6 +30,8 @@ pub(crate) struct Settings {
     pub(crate) rolling: Rolling,
     // Plot
     pub(crate) plot: Plot,
+    // Threshold
+    pub(crate) retention_time: RetentionTimes,
     // Threshold
     pub(crate) threshold: Threshold,
     // Mass spectrum
@@ -55,7 +48,6 @@ impl Settings {
             explode: false,
             filter_null: false,
             mass_to_charge: MassToCharge::default(),
-            retention_time: RetentionTime::default(),
             signal: Signal::default(),
             rolling: Rolling::new(),
             sort: Sort::default(),
@@ -64,6 +56,7 @@ impl Settings {
             view: View::default(),
             edit: false,
             plot: Plot::new(),
+            retention_time: RetentionTimes::new(),
             threshold: Threshold::new(),
             mass_spectrum: MassSpectrum::new(),
         }
@@ -82,7 +75,6 @@ impl Settings {
         self.significant(ui);
         self.percent(ui);
 
-        self.retention_time(ui);
         self.explode(ui);
         self.filter(ui);
         self.signal(ui);
@@ -100,6 +92,10 @@ impl Settings {
         // Mass spectrum
         ui.labeled_separator(ui.localize("MassSpectrum"));
         self.mass_spectrum(ui);
+
+        // Retention times
+        ui.labeled_separator(ui.localize("RetentionTimes"));
+        self.retention_times(ui);
 
         // Plot
         ui.labeled_separator(ui.localize("Plot"));
@@ -154,42 +150,9 @@ impl Settings {
         });
     }
 
-    /// Retention time
-    fn retention_time(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Retention time");
-            ComboBox::from_id_salt("RetentionTime")
-                .selected_text(self.retention_time.units.singular())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut self.retention_time.units,
-                        TimeUnits::Millisecond,
-                        TimeUnits::Millisecond.singular(),
-                    )
-                    .on_hover_text(TimeUnits::Millisecond.abbreviation());
-                    ui.selectable_value(
-                        &mut self.retention_time.units,
-                        TimeUnits::Second,
-                        TimeUnits::Second.singular(),
-                    )
-                    .on_hover_text(TimeUnits::Second.abbreviation());
-                    ui.selectable_value(
-                        &mut self.retention_time.units,
-                        TimeUnits::Minute,
-                        TimeUnits::Minute.singular(),
-                    )
-                    .on_hover_text(TimeUnits::Minute.abbreviation());
-                })
-                .response
-                .on_hover_text(format!(
-                    "Retention time units {}",
-                    self.retention_time.units.abbreviation(),
-                ));
-            DragValue::new(&mut self.retention_time.precision)
-                .range(0..=MAX_PRECISION)
-                .ui(ui)
-                .on_hover_text("Retention time precision");
-        });
+    /// Retention times
+    fn retention_times(&mut self, ui: &mut Ui) {
+        self.retention_time.show(ui);
     }
 
     /// Explode
@@ -320,97 +283,52 @@ impl Default for MassToCharge {
     }
 }
 
-/// Retention time
-#[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Serialize)]
-pub(crate) struct RetentionTime {
-    pub(crate) precision: usize,
-    pub(crate) units: TimeUnits,
-}
+/// Retention times
+#[derive(Clone, Debug, Default, Deserialize, Hash, PartialEq, Serialize)]
+pub(crate) struct RetentionTimes(Vec<i32>);
 
-impl RetentionTime {
-    pub(crate) fn format(self, value: i32) -> RetentionTimeFormat {
-        RetentionTimeFormat {
-            value,
-            precision: Some(self.precision),
-            units: self.units,
-        }
-    }
-}
-
-impl Default for RetentionTime {
-    fn default() -> Self {
-        Self {
-            precision: 2,
-            units: Default::default(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct RetentionTimeFormat {
-    value: i32,
-    precision: Option<usize>,
-    units: TimeUnits,
-}
-
-impl RetentionTimeFormat {
-    pub(crate) fn precision(self, precision: Option<usize>) -> Self {
-        Self { precision, ..self }
-    }
-}
-
-impl Display for RetentionTimeFormat {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        let milliseconds = || Time::new::<millisecond>(self.value as _);
-        let value = match self.units {
-            TimeUnits::Millisecond => return write!(f, "{}", self.value),
-            TimeUnits::Second => milliseconds().get::<second>(),
-            TimeUnits::Minute => milliseconds().get::<minute>(),
-        };
-        if let Some(precision) = self.precision {
-            write!(f, "{value:.precision$}")
-        } else {
-            write!(f, "{value}")
-        }
-    }
-}
-
-impl From<RetentionTimeFormat> for WidgetText {
-    fn from(value: RetentionTimeFormat) -> Self {
-        value.to_string().into()
-    }
-}
-
-/// Time units
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum TimeUnits {
-    Millisecond,
-    #[default]
-    Second,
-    Minute,
-}
-
-impl TimeUnits {
-    pub fn abbreviation(&self) -> &'static str {
-        Units::from(*self).abbreviation()
+impl RetentionTimes {
+    fn new() -> Self {
+        Self(Vec::new())
     }
 
-    pub fn singular(&self) -> &'static str {
-        Units::from(*self).singular()
-    }
-
-    pub fn plural(&self) -> &'static str {
-        Units::from(*self).plural()
-    }
-}
-
-impl From<TimeUnits> for Units {
-    fn from(value: TimeUnits) -> Self {
-        match value {
-            TimeUnits::Millisecond => Units::millisecond(millisecond),
-            TimeUnits::Second => Units::second(second),
-            TimeUnits::Minute => Units::minute(minute),
-        }
+    fn show(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label("Retention times");
+            let response = dnd(ui, ui.auto_id_with("RetentionTimes")).show(
+                self.0.iter_mut(),
+                |ui, index, handle, _state| {
+                    ui.horizontal(|ui| {
+                        // let visible = index.visible;
+                        handle.ui(ui, |ui| {
+                            ui.label(DOTS_SIX_VERTICAL);
+                        });
+                        // ui.checkbox(&mut index.visible, "");
+                        // let mut text = RichText::new(ui.localize(&index.name));
+                        // if !visible {
+                        //     text = text.weak();
+                        // }
+                        // let response = ui.label(text);
+                        // Popup::context_menu(&response)
+                        //     .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                        //     .show(|ui| {
+                        //         if ui.button("Show all").clicked() {
+                        //             visible_all = Some(true);
+                        //         }
+                        //         if ui.button("Hide all").clicked() {
+                        //             visible_all = Some(false);
+                        //         }
+                        //     });
+                    });
+                },
+            );
+            if response.is_drag_finished() {
+                response.update_vec(self.0.as_mut_slice());
+            }
+            if ui.button(PLUS).clicked() {
+                self.0.push(0);
+            }
+        });
     }
 }
 
