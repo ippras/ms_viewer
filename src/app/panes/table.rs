@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use crate::{
     app::{states::pane::State, widgets::mass_spectrum::MassSpectrum},
     r#const::*,
@@ -8,21 +6,24 @@ use crate::{
 use const_format::formatcp;
 use egui::{
     CentralPanel, Direction, Frame, Id, Layout, Margin, MenuBar, RichText, ScrollArea, TextStyle,
-    TopBottomPanel, Ui,
+    TextWrapMode, TopBottomPanel, Ui,
 };
 use egui_ext::ResponseExt;
 use egui_l20n::prelude::*;
-use egui_phosphor::regular::{COPY, COPY_SIMPLE, TAG, X};
-use egui_table::{CellInfo, HeaderCellInfo, HeaderRow, Table, TableDelegate, TableState};
+use egui_phosphor::regular::{COPY, COPY_SIMPLE, HASH, TAG, X};
+use egui_table::{CellInfo, Column, HeaderCellInfo, HeaderRow, Table, TableDelegate, TableState};
 use egui_tiles::{TileId, UiResponse};
 use metadata::egui::MetadataWidget;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 use tracing::{error, instrument};
 
+pub(crate) const ID_SOURCE: &str = "Table";
+
 const COLUMN_COUNT: usize = 3;
-const LEN: usize = top::FACTORS.end;
-const TOP: &[Range<usize>] = &[top::IDENTIFIER, top::STEREOSPECIFIC_NUMBERS, top::FACTORS];
+const LEN: usize = top::MASS_SPECTRUM.end;
+const TOP: &[Range<usize>] = &[top::INDEX, top::RETENTION_TIME, top::MASS_SPECTRUM];
 
 /// Table view
 pub(crate) struct TableView<'a> {
@@ -45,9 +46,8 @@ impl TableView<'_> {
             TableState::reset(ui.ctx(), id);
             self.state.event.reset_table_state = false;
         }
-        let data_frame = self.data_frame(ui);
         let height = ui.text_style_height(&TextStyle::Heading) + 2.0 * MARGIN.y;
-        let num_rows = data_frame.height() as u64;
+        let num_rows = self.data.height() as u64;
         let num_columns = LEN;
         Table::new()
             .id_salt(id_salt)
@@ -74,15 +74,14 @@ impl TableView<'_> {
         }
         match (row, column) {
             // Top
-            (0, top::IDENTIFIER) => {
-                ui.heading(ui.localize("Identifier.abbreviation"))
-                    .on_hover_localized("Identifier");
+            (0, top::INDEX) => {
+                ui.heading(HASH).on_hover_localized("Index");
             }
-            (0, top::STEREOSPECIFIC_NUMBERS) => {
-                ui.heading(ui.localize("StereospecificNumber?number=many"));
+            (0, top::RETENTION_TIME) => {
+                ui.heading(ui.localize("RetentionTime"));
             }
-            (0, top::FACTORS) => {
-                ui.heading(ui.localize("Factors"));
+            (0, top::MASS_SPECTRUM) => {
+                ui.heading(ui.localize("MassSpectrum"));
             }
             _ => {}
         };
@@ -95,180 +94,16 @@ impl TableView<'_> {
         row: usize,
         column: Range<usize>,
     ) -> PolarsResult<()> {
-        let data_frame = self.data_frame(ui);
+        threshold(&self.data, row, ui)?;
         match (row, column) {
-            (row, bottom::INDEX) => {
+            (row, top::INDEX) => {
                 ui.label(row.to_string());
             }
-            (row, bottom::LABEL) => {
-                if let Some(text) = data_frame[LABEL].str()?.get(row) {
-                    Label::new(text).truncate().ui(ui).try_on_hover_ui(
-                        |ui| -> PolarsResult<()> {
-                            ui.heading(ui.localize(PROPERTIES));
-                            let properties = &data_frame[PROPERTIES];
-                            Grid::new(ui.next_auto_id())
-                                .show(ui, |ui| {
-                                    ui.label(ui.localize(IODINE_VALUE));
-                                    ui.label(
-                                        properties
-                                            .struct_()?
-                                            .field_by_name(IODINE_VALUE)?
-                                            .get(row)?
-                                            .str_value(),
-                                    );
-                                    ui.end_row();
-
-                                    ui.label(ui.localize(RELATIVE_ATOMIC_MASS));
-                                    ui.label(
-                                        properties
-                                            .struct_()?
-                                            .field_by_name(RELATIVE_ATOMIC_MASS)?
-                                            .get(row)?
-                                            .str_value(),
-                                    );
-                                    ui.end_row();
-                                    Ok(())
-                                })
-                                .inner
-                        },
-                    )?;
-                }
-            }
+            (row, top::RETENTION_TIME) => self.retention_time(ui, row)?,
+            (row, top::MASS_SPECTRUM) => self.mass_spectrum(ui, row)?,
         }
         Ok(())
     }
-
-    // fn body_cell_content_ui(
-    //     &mut self,
-    //     ui: &mut Ui,
-    //     row: usize,
-    //     column: Range<usize>,
-    // ) -> PolarsResult<()> {
-    //     let data_frame = self.data_frame(ui);
-    //     // Color
-    //     if let Some(standard) = data_frame[STANDARD]
-    //         .struct_()?
-    //         .field_by_name(MASK)?
-    //         .bool()?
-    //         .get(row)
-    //         && standard
-    //     {
-    //         ui.visuals_mut().override_text_color = Some(ui.visuals().strong_text_color());
-    //     } else if let Some(threshold) = data_frame[THRESHOLD].bool()?.get(row)
-    //         && !threshold
-    //     {
-    //         ui.multiply_opacity(ui.visuals().disabled_alpha());
-    //     }
-    //     match (row, column) {
-    //         (row, bottom::INDEX) => {
-    //             ui.label(row.to_string());
-    //         }
-    //         (row, bottom::LABEL) => {
-    //             if let Some(text) = data_frame[LABEL].str()?.get(row) {
-    //                 Label::new(text).truncate().ui(ui).try_on_hover_ui(
-    //                     |ui| -> PolarsResult<()> {
-    //                         ui.heading(ui.localize(PROPERTIES));
-    //                         let properties = &data_frame[PROPERTIES];
-    //                         Grid::new(ui.next_auto_id())
-    //                             .show(ui, |ui| {
-    //                                 ui.label(ui.localize(IODINE_VALUE));
-    //                                 ui.label(
-    //                                     properties
-    //                                         .struct_()?
-    //                                         .field_by_name(IODINE_VALUE)?
-    //                                         .get(row)?
-    //                                         .str_value(),
-    //                                 );
-    //                                 ui.end_row();
-
-    //                                 ui.label(ui.localize(RELATIVE_ATOMIC_MASS));
-    //                                 ui.label(
-    //                                     properties
-    //                                         .struct_()?
-    //                                         .field_by_name(RELATIVE_ATOMIC_MASS)?
-    //                                         .get(row)?
-    //                                         .str_value(),
-    //                                 );
-    //                                 ui.end_row();
-    //                                 Ok(())
-    //                             })
-    //                             .inner
-    //                     },
-    //                 )?;
-    //             }
-    //         }
-    //         (row, bottom::FATTY_ACID) => {
-    //             if let Some(fatty_acid) = data_frame.try_fatty_acid()?.delta()?.get(row) {
-    //                 Label::new(fatty_acid).truncate().ui(ui);
-    //             }
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS123) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS123], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .show(ui)?
-    //                 .try_on_hover_ui(|ui| -> PolarsResult<()> {
-    //                     ui.heading(ui.localize(STANDARD));
-    //                     let factors = &data_frame[STANDARD]
-    //                         .struct_()?
-    //                         .field_by_name(STEREOSPECIFIC_NUMBERS123)?;
-    //                     let mean = factors
-    //                         .struct_()?
-    //                         .field_by_name(MEAN)?
-    //                         .f64()?
-    //                         .get(row)
-    //                         .unwrap_or_default();
-    //                     let standard_deviation = factors
-    //                         .struct_()?
-    //                         .field_by_name(STANDARD_DEVIATION)?
-    //                         .f64()?
-    //                         .get(row)
-    //                         .unwrap_or_default();
-    //                     let sample_series = factors.struct_()?.field_by_name(SAMPLE)?;
-    //                     let sample = sample_series.get(row)?.str_value();
-    //                     Grid::new(ui.next_auto_id())
-    //                         .show(ui, |ui| {
-    //                             ui.label(ui.localize(FACTORS));
-    //                             ui.label(format!(
-    //                                 "{mean}{NO_BREAK_SPACE}±{standard_deviation} {sample}"
-    //                             ));
-    //                             ui.end_row();
-    //                             Ok(())
-    //                         })
-    //                         .inner
-    //                 })?;
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS2) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS2], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::STEREOSPECIFIC_NUMBERS13) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [STEREOSPECIFIC_NUMBERS13], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::ENRICHMENT_FACTOR) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [FACTORS, ENRICHMENT], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         (row, bottom::SELECTIVITY_FACTOR) => {
-    //             MeanAndStandardDeviation::new(&data_frame, [FACTORS, SELECTIVITY], row)
-    //                 .with_standard_deviation(self.state.settings.standard_deviation)
-    //                 .with_sample(true)
-    //                 .with_calculation(true)
-    //                 .show(ui)?;
-    //         }
-    //         _ => {}
-    //     }
-    //     Ok(())
-    // }
 }
 
 impl TableDelegate for TableView<'_> {
@@ -294,22 +129,6 @@ impl TableDelegate for TableView<'_> {
 }
 
 impl TableView<'_> {
-    pub(super) fn show(&mut self, ui: &mut Ui) {
-        _ = self.grouped_by_retention_time(ui);
-        // if let Err(error) = match self.state.settings.sort {
-        //     Sort::RetentionTime if !self.state.settings.explode => {
-        //         self.grouped_by_retention_time(ui)
-        //     }
-        //     Sort::MassToCharge if !self.state.settings.explode => {
-        //         self.grouped_by_mass_to_charge(ui)
-        //     }
-        //     _ => self.exploded(ui),
-        // } {
-        //     error!(%error);
-        //     ui.label(error.to_string());
-        // }
-    }
-
     // fn grouped_by_mass_to_charge(&self, ui: &mut Ui) -> PolarsResult<()> {
     //     let width = ui.spacing().interact_size.x;
     //     let height = ui.spacing().interact_size.y;
@@ -370,6 +189,97 @@ impl TableView<'_> {
     //         });
     //     Ok(())
     // }
+
+    fn mass_spectrum(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
+        MassSpectrum {
+            data_frame: &self.data,
+            index: row,
+            settings: &self.state.settings,
+        }
+        .show(ui)?;
+        Ok(())
+    }
+
+    fn retention_time(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
+        let meta = &self.data[META];
+        let text = retention_time
+            .str_value(row)
+            .ok_or(polars_err!(NoData: RETENTION_TIME));
+        // let physical_retention_time = physical_retention_time(retention_time, row).unwrap();
+        ui.label(text)
+            .on_hover_text(physical_retention_time.to_string())
+            .try_on_hover_ui(|ui| -> PolarsResult<()> {
+                ui.heading("Ions");
+                let base_peak = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.BasePeak"))?;
+                ui.label(format!("Base: {}", base_peak.str_value(row)?));
+                let molecular_ion = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.MolecularPeak"))?;
+                ui.label(format!("Molecular: {}", molecular_ion.str_value(row)?));
+                let ion55 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion55"))?;
+                ui.label(format!("55: {}", ion55.str_value(row)?));
+                let ion67 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion67"))?;
+                ui.label(format!("67: {}", ion67.str_value(row)?));
+                let ion74 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion74"))?;
+                ui.label(format!("74: {}", ion74.str_value(row)?));
+                let ion79 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion79"))?;
+                ui.label(format!("79: {}", ion79.str_value(row)?));
+                let ion81 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion81"))?;
+                ui.label(format!("81: {}", ion81.str_value(row)?));
+                let ion87 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion87"))?;
+                ui.label(format!("87: {}", ion87.str_value(row)?));
+                let ion91 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion91"))?;
+                ui.label(format!("91: {}", ion91.str_value(row)?));
+                let ion108 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{SIGNAL}.Ion108"))?;
+                ui.label(format!("108: {}", ion108.str_value(row)?));
+                let ion150 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{SIGNAL}.Ion150"))?;
+                ui.label(format!("150: {}", ion150.str_value(row)?));
+                Ok(())
+            })?
+            .try_on_hover_ui(|ui| -> PolarsResult<()> {
+                let is_saturated = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsSaturated"))?;
+                ui.label(format!("IsSaturated: {}", is_saturated.str_value(row)?));
+                let is_monoenoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsMonoenoic"))?;
+                ui.label(format!("IsMonoenoic: {}", is_monoenoic.str_value(row)?));
+                let is_dienoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsDienoic"))?;
+                ui.label(format!("IsDienoic: {}", is_dienoic.str_value(row)?));
+                let is_polyenoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsPolyenoic"))?;
+                ui.label(format!("IsPolyenoic: {}", is_polyenoic.str_value(row)?));
+                let is_tropylium = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsTropylium"))?;
+                ui.label(format!("IsTropylium: {}", is_tropylium.str_value(row)?));
+                let is_omega_3 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-3"))?;
+                ui.label(format!("IsOmega-3: {}", is_omega_3.str_value(row)?));
+                let is_omega_6 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-6"))?;
+                ui.label(format!("IsOmega-6: {}", is_omega_6.str_value(row)?));
+                Ok(())
+            })?
+            .context_menu(|ui| {
+                if ui.button((COPY, "Copy")).clicked() {
+                    ui.ctx().copy_text(physical_retention_time.to_string());
+                }
+            });
+        Ok(())
+    }
 
     fn grouped_by_retention_time(&self, ui: &mut Ui) -> PolarsResult<()> {
         let width = ui.spacing().interact_size.x;
@@ -647,4 +557,12 @@ pub fn threshold(data_frame: &DataFrame, row: usize, ui: &mut Ui) -> PolarsResul
         ui.multiply_opacity(ui.visuals().disabled_alpha());
     }
     Ok(())
+}
+
+mod top {
+    use super::*;
+
+    pub(super) const INDEX: Range<usize> = 0..1;
+    pub(super) const RETENTION_TIME: Range<usize> = INDEX.end..INDEX.end + 1;
+    pub(super) const MASS_SPECTRUM: Range<usize> = RETENTION_TIME.end..RETENTION_TIME.end + 1;
 }
