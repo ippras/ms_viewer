@@ -30,6 +30,8 @@ pub(crate) struct Settings {
     pub(crate) rolling: Rolling,
     // Plot
     pub(crate) plot: Plot,
+    // Table
+    pub(crate) table: Table,
     // Threshold
     pub(crate) retention_time: RetentionTimes,
     // Threshold
@@ -56,6 +58,7 @@ impl Settings {
             view: View::default(),
             edit: false,
             plot: Plot::new(),
+            table: Table::new(),
             retention_time: RetentionTimes::new(),
             threshold: Threshold::new(),
             mass_spectrum: MassSpectrum::new(),
@@ -244,6 +247,11 @@ impl Settings {
     /// Plot
     fn plot(&mut self, ui: &mut Ui) {
         self.plot.show(ui);
+    }
+
+    /// Table
+    fn table(&mut self, ui: &mut Ui) {
+        self.table.show(ui);
     }
 }
 
@@ -452,6 +460,49 @@ impl Plot {
         ui.horizontal(|ui| {
             ui.label("Stack").on_hover_text("Stack.hover");
             ui.checkbox(&mut self.stack, ());
+        });
+    }
+}
+
+/// Table settings
+#[derive(Clone, Copy, Debug, Default, Deserialize, Hash, PartialEq, Serialize)]
+pub(crate) struct Table {
+    pub(crate) reset: bool,
+    pub(crate) resizable: bool,
+    pub(crate) sticky_columns: usize,
+    pub(crate) truncate_headers: bool,
+}
+
+impl Table {
+    pub(crate) fn new() -> Self {
+        Self {
+            reset: false,
+            resizable: false,
+            sticky_columns: 0,
+            truncate_headers: false,
+        }
+    }
+
+    fn show(&mut self, ui: &mut Ui) {
+        self.sticky(ui);
+        self.truncate(ui);
+    }
+
+    /// Sticky columns
+    fn sticky(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(ui.localize("StickyColumns"))
+                .on_hover_localized("StickyColumns.hover");
+            Slider::new(&mut self.sticky_columns, 0..=8).ui(ui);
+        });
+    }
+
+    /// Truncate headers
+    fn truncate(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(ui.localize("TruncateHeaders"))
+                .on_hover_localized("TruncateHeaders.hover");
+            ui.checkbox(&mut self.truncate_headers, ());
         });
     }
 }

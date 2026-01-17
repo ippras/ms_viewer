@@ -6,7 +6,7 @@ use crate::{
 use const_format::formatcp;
 use egui::{
     CentralPanel, Direction, Frame, Id, Layout, Margin, MenuBar, RichText, ScrollArea, TextStyle,
-    TextWrapMode, TopBottomPanel, Ui,
+    TextWrapMode, TopBottomPanel, Ui, Vec2, vec2,
 };
 use egui_ext::ResponseExt;
 use egui_l20n::prelude::*;
@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 use tracing::{error, instrument};
 
-pub(crate) const ID_SOURCE: &str = "Table";
+const ID_SOURCE: &str = "Table";
+const MARGIN: Vec2 = vec2(4.0, 2.0);
 
 const COLUMN_COUNT: usize = 3;
 const LEN: usize = top::MASS_SPECTRUM.end;
@@ -41,10 +42,10 @@ impl<'a> TableView<'a> {
 impl TableView<'_> {
     pub(crate) fn show(&mut self, ui: &mut Ui) {
         let id_salt = Id::new(ID_SOURCE).with("Table");
-        if self.state.event.reset_table_state {
+        if self.state.settings.table.reset {
             let id = TableState::id(ui, Id::new(id_salt));
             TableState::reset(ui.ctx(), id);
-            self.state.event.reset_table_state = false;
+            self.state.settings.table.reset = false;
         }
         let height = ui.text_style_height(&TextStyle::Heading) + 2.0 * MARGIN.y;
         let num_rows = self.data.height() as u64;
@@ -101,7 +102,98 @@ impl TableView<'_> {
             }
             (row, top::RETENTION_TIME) => self.retention_time(ui, row)?,
             (row, top::MASS_SPECTRUM) => self.mass_spectrum(ui, row)?,
+            _ => {}
         }
+        Ok(())
+    }
+
+    fn mass_spectrum(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
+        MassSpectrum {
+            data_frame: &self.data,
+            index: row,
+            settings: &self.state.settings,
+        }
+        .show(ui)?;
+        Ok(())
+    }
+
+    fn retention_time(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
+        let meta = &self.data[META];
+        let retention_time = self.data[RETENTION_TIME].as_materialized_series();
+        let physical_retention_time = physical_retention_time(retention_time, row)?;
+        let text = retention_time.str_value(row)?;
+        ui.label(text)
+            .on_hover_text(physical_retention_time.to_string())
+            .try_on_hover_ui(|ui| -> PolarsResult<()> {
+                ui.heading("Ions");
+                let base_peak = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.BasePeak"))?;
+                ui.label(format!("Base: {}", base_peak.str_value(row)?));
+                let molecular_ion = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.MolecularPeak"))?;
+                ui.label(format!("Molecular: {}", molecular_ion.str_value(row)?));
+                let ion55 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion55"))?;
+                ui.label(format!("55: {}", ion55.str_value(row)?));
+                let ion67 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion67"))?;
+                ui.label(format!("67: {}", ion67.str_value(row)?));
+                let ion74 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion74"))?;
+                ui.label(format!("74: {}", ion74.str_value(row)?));
+                let ion79 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion79"))?;
+                ui.label(format!("79: {}", ion79.str_value(row)?));
+                let ion81 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion81"))?;
+                ui.label(format!("81: {}", ion81.str_value(row)?));
+                let ion87 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion87"))?;
+                ui.label(format!("87: {}", ion87.str_value(row)?));
+                let ion91 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion91"))?;
+                ui.label(format!("91: {}", ion91.str_value(row)?));
+                let ion108 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{SIGNAL}.Ion108"))?;
+                ui.label(format!("108: {}", ion108.str_value(row)?));
+                let ion150 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{SIGNAL}.Ion150"))?;
+                ui.label(format!("150: {}", ion150.str_value(row)?));
+                Ok(())
+            })?
+            .try_on_hover_ui(|ui| -> PolarsResult<()> {
+                let is_saturated = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsSaturated"))?;
+                ui.label(format!("IsSaturated: {}", is_saturated.str_value(row)?));
+                let is_monoenoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsMonoenoic"))?;
+                ui.label(format!("IsMonoenoic: {}", is_monoenoic.str_value(row)?));
+                let is_dienoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsDienoic"))?;
+                ui.label(format!("IsDienoic: {}", is_dienoic.str_value(row)?));
+                let is_polyenoic = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsPolyenoic"))?;
+                ui.label(format!("IsPolyenoic: {}", is_polyenoic.str_value(row)?));
+                let is_tropylium = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsTropylium"))?;
+                ui.label(format!("IsTropylium: {}", is_tropylium.str_value(row)?));
+                let is_omega_3 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-3"))?;
+                ui.label(format!("IsOmega-3: {}", is_omega_3.str_value(row)?));
+                let is_omega_6 = meta
+                    .struct_()?
+                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-6"))?;
+                ui.label(format!("IsOmega-6: {}", is_omega_6.str_value(row)?));
+                Ok(())
+            })?
+            .context_menu(|ui| {
+                if ui.button((COPY, "Copy")).clicked() {
+                    ui.ctx().copy_text(physical_retention_time.to_string());
+                }
+            });
         Ok(())
     }
 }
@@ -189,97 +281,6 @@ impl TableView<'_> {
     //         });
     //     Ok(())
     // }
-
-    fn mass_spectrum(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
-        MassSpectrum {
-            data_frame: &self.data,
-            index: row,
-            settings: &self.state.settings,
-        }
-        .show(ui)?;
-        Ok(())
-    }
-
-    fn retention_time(&self, ui: &mut Ui, row: usize) -> PolarsResult<()> {
-        let meta = &self.data[META];
-        let text = retention_time
-            .str_value(row)
-            .ok_or(polars_err!(NoData: RETENTION_TIME));
-        // let physical_retention_time = physical_retention_time(retention_time, row).unwrap();
-        ui.label(text)
-            .on_hover_text(physical_retention_time.to_string())
-            .try_on_hover_ui(|ui| -> PolarsResult<()> {
-                ui.heading("Ions");
-                let base_peak = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.BasePeak"))?;
-                ui.label(format!("Base: {}", base_peak.str_value(row)?));
-                let molecular_ion = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.MolecularPeak"))?;
-                ui.label(format!("Molecular: {}", molecular_ion.str_value(row)?));
-                let ion55 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion55"))?;
-                ui.label(format!("55: {}", ion55.str_value(row)?));
-                let ion67 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion67"))?;
-                ui.label(format!("67: {}", ion67.str_value(row)?));
-                let ion74 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion74"))?;
-                ui.label(format!("74: {}", ion74.str_value(row)?));
-                let ion79 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion79"))?;
-                ui.label(format!("79: {}", ion79.str_value(row)?));
-                let ion81 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion81"))?;
-                ui.label(format!("81: {}", ion81.str_value(row)?));
-                let ion87 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion87"))?;
-                ui.label(format!("87: {}", ion87.str_value(row)?));
-                let ion91 = meta.struct_()?.field_by_name(formatcp!("{SIGNAL}.Ion91"))?;
-                ui.label(format!("91: {}", ion91.str_value(row)?));
-                let ion108 = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{SIGNAL}.Ion108"))?;
-                ui.label(format!("108: {}", ion108.str_value(row)?));
-                let ion150 = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{SIGNAL}.Ion150"))?;
-                ui.label(format!("150: {}", ion150.str_value(row)?));
-                Ok(())
-            })?
-            .try_on_hover_ui(|ui| -> PolarsResult<()> {
-                let is_saturated = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsSaturated"))?;
-                ui.label(format!("IsSaturated: {}", is_saturated.str_value(row)?));
-                let is_monoenoic = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsMonoenoic"))?;
-                ui.label(format!("IsMonoenoic: {}", is_monoenoic.str_value(row)?));
-                let is_dienoic = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsDienoic"))?;
-                ui.label(format!("IsDienoic: {}", is_dienoic.str_value(row)?));
-                let is_polyenoic = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsPolyenoic"))?;
-                ui.label(format!("IsPolyenoic: {}", is_polyenoic.str_value(row)?));
-                let is_tropylium = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsTropylium"))?;
-                ui.label(format!("IsTropylium: {}", is_tropylium.str_value(row)?));
-                let is_omega_3 = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-3"))?;
-                ui.label(format!("IsOmega-3: {}", is_omega_3.str_value(row)?));
-                let is_omega_6 = meta
-                    .struct_()?
-                    .field_by_name(formatcp!("{MASS_SPECTRUM}.IsOmega-6"))?;
-                ui.label(format!("IsOmega-6: {}", is_omega_6.str_value(row)?));
-                Ok(())
-            })?
-            .context_menu(|ui| {
-                if ui.button((COPY, "Copy")).clicked() {
-                    ui.ctx().copy_text(physical_retention_time.to_string());
-                }
-            });
-        Ok(())
-    }
 
     fn grouped_by_retention_time(&self, ui: &mut Ui) -> PolarsResult<()> {
         let width = ui.spacing().interact_size.x;
