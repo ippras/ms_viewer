@@ -1,13 +1,15 @@
 MassSpectrum = Mass spectrum
 Plot = Plot
+RetentionTime = Retention time
+RetentionTimes = Retention times
 Rolling = Rolling
 Table = Table
 Threshold = Threshold
 Threshold_Factor = Factor
 Threshold_Filter = Filter
+#Threshold_Manual = Manual
 Threshold_RetentionTime = Retention time
 Threshold_Sort = Sort
-#Threshold_Manual = Manual
 
 # Hover
 

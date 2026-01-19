@@ -1,8 +1,5 @@
 use crate::{
-    app::{
-        computers::MINUTES,
-        states::pane::settings::{Settings, Threshold},
-    },
+    app::states::pane::settings::{RetentionTimes, Settings, Threshold},
     r#const::*,
     utils::hash::HashedDataFrame,
 };
@@ -43,13 +40,15 @@ impl ComputerMut<Key<'_>, Value> for Computer {
 pub struct Key<'a> {
     pub(crate) frame: &'a HashedDataFrame,
     pub(crate) threshold: Threshold,
+    pub(crate) retention_times: &'a RetentionTimes,
 }
 
 impl<'a> Key<'a> {
-    pub(crate) fn new(frame: &'a HashedDataFrame, settings: &Settings) -> Self {
+    pub(crate) fn new(frame: &'a HashedDataFrame, settings: &'a Settings) -> Self {
         Self {
             frame,
             threshold: settings.threshold,
+            retention_times: &settings.retention_times,
         }
     }
 }
@@ -59,10 +58,10 @@ type Value = HashedDataFrame;
 
 /// Format
 fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
-    // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
+    // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0))
     //     .abs()
     //     .arg_min();
-    // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES))
+    // let index = (col(RETENTION_TIME) - lit(key.threshold.retention_time.0))
     //     .abs()
     //     .arg_sort(false, false);
     // let pivot = temp.pivot(
@@ -96,7 +95,7 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
     let mass_to_charge = explode.clone().select([col(MASS_TO_CHARGE).unique()]);
     debug!(mass_to_charge = %mass_to_charge.clone().collect().unwrap());
     // Получаем все возможные пары (RETENTION_TIME, MASS_TO_CHARGE)
-    let cross_join = retention_time.cross_join(mass_to_charge, None).cache();
+    let cross_join = retention_time.cross_join(mass_to_charge, None);
     debug!(cross_join = %cross_join.clone().collect().unwrap());
     // Сопоставляем с SIGNAL
     let join = cross_join.join(
@@ -106,16 +105,16 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         JoinArgs::new(JoinType::Left),
     );
     debug!(join = %join.clone().collect().unwrap());
-    // Сортируем по
-    let sort = join.sort_by_exprs(
-        [
-            (col(RETENTION_TIME) - lit(key.threshold.retention_time.0 * MINUTES)).abs(),
-            col(MASS_TO_CHARGE),
-        ],
-        SortMultipleOptions::new(),
-    );
-    debug!(sort = %sort.clone().collect().unwrap());
-    let group = sort
+    // // Сортируем по
+    // let sort = join.sort_by_exprs(
+    //     [
+    //         (col(RETENTION_TIME) - lit(key.threshold.retention_time.0)).abs(),
+    //         col(MASS_TO_CHARGE),
+    //     ],
+    //     SortMultipleOptions::new(),
+    // );
+    // debug!(sort = %sort.clone().collect().unwrap());
+    let group = join
         .group_by_stable([col(RETENTION_TIME)])
         .agg([col(SIGNAL)]);
     debug!(group = %group.clone().collect().unwrap());
@@ -134,6 +133,21 @@ fn compute(mut lazy_frame: LazyFrame, key: Key) -> PolarsResult<LazyFrame> {
         [col(RETENTION_TIME)],
         JoinArgs::new(JoinType::Left),
     );
+    let exprs = key
+        .retention_times
+        .iter()
+        .map(|&retention_time| col(RETENTION_TIME).eq(retention_time))
+        .collect::<Vec<_>>();
+    // let exprs = Vec::new();
+    // for retention_time in key.retention_times {
+    //     //
+    // }
+    concat_arr(
+        key.retention_times
+            .iter()
+            .map(|&retention_time| col(RETENTION_TIME).eq(retention_time).arg)
+            .collect(),
+    )?;
     lazy_frame = lazy_frame.select([
         col(RETENTION_TIME),
         col(MASS_SPECTRUM),
@@ -165,18 +179,15 @@ fn cosine_distance(
             .into_iter()
             .map(|mass_spectrum| {
                 let source = mass_spectrum
-                    .ok_or(polars_err!(NoData: "SIGNAL"))?
+                    .ok_or(polars_err!(NoData: SIGNAL))?
                     .f64()?
                     .fill_null_with_values(0.0)?
                     .into_no_null_iter()
                     .collect::<Vec<_>>();
+                assert_eq!(source.len(), target.len());
                 let distance = cosine(&source, &target);
-                // // Сходство (cos угла) более чем на 75%
+                // Сходство (cos угла) более чем на 99%
                 // let threshold = distance < key.threshold.factor.0;
-                // if threshold {}
-                if distance.is_nan() {
-                    error!(?source, ?target);
-                }
                 Ok(Some(distance))
             })
             .collect::<PolarsResult<Float64Chunked>>()?
@@ -220,7 +231,7 @@ fn threshold(key: Key) -> impl Fn(Column) -> PolarsResult<Column> + 'static + Se
     move |column| {
         let r#struct = column.struct_()?;
         let retention_time = r#struct.field_by_name(RETENTION_TIME)?;
-        let index = abs(&retention_time.sub(key.threshold.retention_time.0 * MINUTES))?
+        let index = abs(&retention_time.sub(key.threshold.retention_time.0))?
             .arg_min()
             .ok_or(polars_err!(NoData: "RETENTION_TIME"))?;
         let mass_spectrum_series = r#struct.field_by_name(MASS_SPECTRUM)?;

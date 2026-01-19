@@ -35,7 +35,7 @@ impl Computer {
         let mut lazy_frame = key.frame.data_frame.clone().lazy();
         info!(lazy_frame = %lazy_frame.clone().collect().unwrap());
         // Convert
-        lazy_frame = lazy_frame.with_columns([to_minutes(col(RETENTION_TIME))]);
+        lazy_frame = lazy_frame.with_columns([col(RETENTION_TIME).cast(DataType::Float64)]);
         let data_frame = lazy_frame.collect()?;
         // Compute
         let value = compute(&data_frame, key)?;

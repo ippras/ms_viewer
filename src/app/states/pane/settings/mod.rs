@@ -1,10 +1,12 @@
+use std::{ops::Deref, slice::Iter, vec::IntoIter};
+
 use self::mass_spectrum::{MassSpectrum, Sort as MassSpectrumSort};
 use crate::app::MAX_PRECISION;
-use egui::{ComboBox, DragValue, Slider, Ui, Widget};
+use egui::{ComboBox, DragValue, Label, Slider, Ui, Widget};
 use egui_dnd::dnd;
 use egui_ext::LabeledSeparator;
 use egui_l20n::prelude::*;
-use egui_phosphor::regular::{CHART_BAR, DOTS_SIX_VERTICAL, PLUS, TABLE};
+use egui_phosphor::regular::{CHART_BAR, DOTS_SIX_VERTICAL, MINUS, PLUS, SORT_ASCENDING, TABLE};
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +15,6 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct Settings {
     pub(crate) percent: bool,
     pub(crate) precision: usize,
-    pub(crate) resizable: bool,
     pub(crate) significant: bool,
 
     pub(crate) explode: bool,
@@ -33,7 +34,7 @@ pub(crate) struct Settings {
     // Table
     pub(crate) table: Table,
     // Threshold
-    pub(crate) retention_time: RetentionTimes,
+    pub(crate) retention_times: RetentionTimes,
     // Threshold
     pub(crate) threshold: Threshold,
     // Mass spectrum
@@ -45,7 +46,6 @@ impl Settings {
         Self {
             percent: true,
             precision: 1,
-            resizable: false,
             significant: false,
             explode: false,
             filter_null: false,
@@ -59,7 +59,7 @@ impl Settings {
             edit: false,
             plot: Plot::new(),
             table: Table::new(),
-            retention_time: RetentionTimes::new(),
+            retention_times: RetentionTimes::new(),
             threshold: Threshold::new(),
             mass_spectrum: MassSpectrum::new(),
         }
@@ -103,6 +103,25 @@ impl Settings {
         // Plot
         ui.labeled_separator(ui.localize("Plot"));
         self.plot(ui);
+
+        // let mut items = vec!["alfred", "bernhard", "christian"];
+        // let mut items = vec![0, 0, 0];
+        // let response = dnd(ui, ui.auto_id_with("RetentionTimes")).show_vec(
+        //     &mut items,
+        //     |ui, item, handle, state| {
+        //         ui.horizontal(|ui| {
+        //             handle.ui(ui, |ui| {
+        //                 ui.label(DOTS_SIX_VERTICAL);
+        //             });
+        //             ui.push_id(state.index, |ui| {
+        //                 ui.label(format!("{item}"));
+        //             });
+        //         });
+        //     },
+        // );
+        // if response.is_drag_finished() {
+        //     response.update_vec(self.0.as_mut_slice());
+        // }
 
         // Grid::new(ui.next_auto_id()).show(ui, |ui| {
         //     // // Mass to charge
@@ -155,7 +174,7 @@ impl Settings {
 
     /// Retention times
     fn retention_times(&mut self, ui: &mut Ui) {
-        self.retention_time.show(ui);
+        self.retention_times.show(ui);
     }
 
     /// Explode
@@ -303,40 +322,77 @@ impl RetentionTimes {
     fn show(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label("Retention times");
-            let response = dnd(ui, ui.auto_id_with("RetentionTimes")).show(
-                self.0.iter_mut(),
-                |ui, index, handle, _state| {
-                    ui.horizontal(|ui| {
-                        // let visible = index.visible;
-                        handle.ui(ui, |ui| {
-                            ui.label(DOTS_SIX_VERTICAL);
-                        });
-                        // ui.checkbox(&mut index.visible, "");
-                        // let mut text = RichText::new(ui.localize(&index.name));
-                        // if !visible {
-                        //     text = text.weak();
-                        // }
-                        // let response = ui.label(text);
-                        // Popup::context_menu(&response)
-                        //     .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
-                        //     .show(|ui| {
-                        //         if ui.button("Show all").clicked() {
-                        //             visible_all = Some(true);
-                        //         }
-                        //         if ui.button("Hide all").clicked() {
-                        //             visible_all = Some(false);
-                        //         }
-                        //     });
-                    });
-                },
-            );
-            if response.is_drag_finished() {
-                response.update_vec(self.0.as_mut_slice());
-            }
             if ui.button(PLUS).clicked() {
                 self.0.push(0);
             }
+            if ui.button(SORT_ASCENDING).clicked() {
+                self.0.sort();
+            }
         });
+        let mut delete = None;
+        let response = dnd(ui, ui.auto_id_with("RetentionTimes")).show(
+            self.0.iter_mut().enumerate(),
+            |ui, (_, item), handle, state| {
+                ui.horizontal(|ui| {
+                    handle.ui(ui, |ui| {
+                        ui.label(DOTS_SIX_VERTICAL);
+                    });
+                    DragValue::new(item)
+                        .range(0..=i32::MAX)
+                        .update_while_editing(false)
+                        .ui(ui);
+                    if ui.button(MINUS).clicked() {
+                        delete = Some(state.index);
+                    }
+                });
+                // DragValue::new(item)
+                //     .range(0..=i32::MAX)
+                //     .update_while_editing(false)
+                //     .ui(ui);
+                // ui.horizontal(|ui| {
+                //     // let visible = index.visible;
+                //     ui.push_id(state.index, |ui| {
+                //         handle.ui(ui, |ui| {
+                //             ui.label(DOTS_SIX_VERTICAL);
+                //         });
+                //         DragValue::new(item)
+                //             .range(0..=i32::MAX)
+                //             .update_while_editing(false)
+                //             .ui(ui);
+                //     });
+                //     // ui.checkbox(&mut index.visible, "");
+                //     // let mut text = RichText::new(ui.localize(&index.name));
+                //     // if !visible {
+                //     //     text = text.weak();
+                //     // }
+                //     // let response = ui.label(text);
+                //     // Popup::context_menu(&response)
+                //     //     .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+                //     //     .show(|ui| {
+                //     //         if ui.button("Show all").clicked() {
+                //     //             visible_all = Some(true);
+                //     //         }
+                //     //         if ui.button("Hide all").clicked() {
+                //     //             visible_all = Some(false);
+                //     //         }
+                //     //     });
+                // });
+            },
+        );
+        if let Some(index) = delete {
+            self.0.remove(index);
+        }
+        if response.is_drag_finished() {
+            response.update_vec(self.0.as_mut_slice());
+        }
+    }
+}
+
+impl Deref for RetentionTimes {
+    type Target = Vec<i32>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 

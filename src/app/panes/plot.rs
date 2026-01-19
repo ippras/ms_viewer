@@ -17,7 +17,11 @@ use egui_plot::{
 use indexmap::IndexMap;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
-use polars::{error::PolarsResult, frame::DataFrame};
+use polars::{
+    error::PolarsResult,
+    frame::DataFrame,
+    prelude::{AnyValue, TimeUnit},
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -246,14 +250,18 @@ impl PlotView<'_> {
         //         .get(PlotKey::new(&frame, &self.settings))
         // });
         let value = self.data;
-        let mut plot = Plot::new("Plot").label_formatter(|name, value| {
-            if !name.is_empty() {
-                format!("{}\nx: {}\ny: {}", name, value.x, value.y)
-            } else {
-                format!("x: {}\ny: {}", value.x, value.y)
-                // "".to_owned()
-            }
-        });
+        let mut plot = Plot::new("Plot")
+            .label_formatter(|name, value| {
+                if !name.is_empty() {
+                    format!("{}\nx: {}\ny: {}", name, value.x, value.y)
+                } else {
+                    format!("x: {}\ny: {}", value.x, value.y)
+                    // "".to_owned()
+                }
+            })
+            .x_axis_formatter(|x, range| {
+                AnyValue::Duration(x.value as _, TimeUnit::Milliseconds).to_string()
+            });
         // .label_formatter(move |name, PlotPoint { x, y }| {
         //             let mut label = String::new();
         //             if !name.is_empty() {

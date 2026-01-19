@@ -47,7 +47,7 @@ impl<'a> Key<'a> {
         Self {
             frame,
             precision: settings.precision,
-            retention_time: &settings.retention_time,
+            retention_time: &settings.retention_times,
             significant: settings.significant,
         }
     }

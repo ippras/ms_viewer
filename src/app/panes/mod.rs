@@ -120,7 +120,7 @@ impl Pane {
         ResetButton::new(&mut state.events.reset_table_state)
             .size(size)
             .ui(ui);
-        ResizeButton::new(&mut state.settings.resizable)
+        ResizeButton::new(&mut state.settings.table.resizable)
             .size(size)
             .ui(ui);
         EditButton::new(&mut state.settings.edit).size(size).ui(ui);
